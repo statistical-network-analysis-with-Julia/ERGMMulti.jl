@@ -5,9 +5,9 @@ ERGMMulti = "d0e1f234-5678-90ab-cdef-123456789012"
 Network = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 [sources]
-ERGM = {path = "../../ERGM.jl"}
 ERGMMulti = {path = ".."}
-Network = {path = "../../Network.jl"}
+ERGM = {url = "https://github.com/statistical-network-analysis-with-Julia/ERGM.jl.git"}
+Network = {url = "https://github.com/statistical-network-analysis-with-Julia/Network.jl.git"}
 
 [compat]
 Documenter = "1"
