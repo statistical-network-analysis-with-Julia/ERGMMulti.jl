@@ -1,5 +1,17 @@
 # ERGMMulti.jl
 
+
+[![Network Analysis](https://img.shields.io/badge/Network-Analysis-orange.svg)](https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl)
+[![Build Status](https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/stable/)
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/dev/)
+[![Julia](https://img.shields.io/badge/Julia-1.9+-purple.svg)](https://julialang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+<p align="center">
+  <img src="docs/src/assets/logo.svg" alt="ERGMMulti.jl icon" width="160">
+</p>
+
 ERGMs for Multiple and Multilayer Networks in Julia.
 
 ## Overview
@@ -15,7 +27,7 @@ This package is a Julia port of the R `ergm.multi` package from the StatNet coll
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/Statistical-network-analysis-with-Julia/ERGMMulti.jl")
+Pkg.add(url="https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl")
 ```
 
 ## Features
@@ -202,6 +214,21 @@ terms = [
 ]
 ```
 
+## Documentation
+
+For more detailed documentation, see:
+
+- [Stable Documentation](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/stable/)
+- [Development Documentation](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/dev/)
+
+## References
+
+1. Krivitsky, P.N., Koehly, L.M., Marcum, C.S. (2020). Exponential-family random graph models for multi-layer networks. *Psychometrika*, 85(3), 630-659.
+
+2. Wang, P., Robins, G., Pattison, P., Lazega, E. (2013). Exponential random graph models for multilevel networks. *Social Networks*, 35(1), 96-115.
+
+3. Hunter, D.R., Handcock, M.S., Butts, C.T., Goodreau, S.M., Morris, M. (2008). ergm: A package to fit, simulate and diagnose exponential-family models for networks. *Journal of Statistical Software*, 24(3), 1-29.
+
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) for details.

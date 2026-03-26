@@ -1,9 +1,13 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ERGM = "c3d4e5f6-a7b8-9012-cdef-345678901234"
 ERGMMulti = "d0e1f234-5678-90ab-cdef-123456789012"
+Network = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 [sources]
-ERGMMulti = {path = "/home/simon/githubRepos/sna/ERGMMulti"}
+ERGM = {path = "../../ERGM.jl"}
+ERGMMulti = {path = ".."}
+Network = {path = "../../Network.jl"}
 
 [compat]
 Documenter = "1"
