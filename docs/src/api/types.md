@@ -1,68 +1,21 @@
-# Types API Reference
-
-This page documents the core data types in ERGMMulti.jl.
-
-## Multi-Network Structures
-
-### MultiNetwork
-
-```@docs
-MultiNetwork
-```
-
-### MultilayerNetwork
+# Types
 
 ```@docs
 MultilayerNetwork
-```
-
-### MultilevelNetwork
-
-```@docs
+MultiNetwork
 MultilevelNetwork
+MultiERGMModel
+MultiERGMResult
 ```
 
-## Structure Queries
-
-### Vertex Count
+## Construction and conversion
 
 ```@docs
-Graphs.nv(::MultiNetwork)
-Graphs.nv(::MultilayerNetwork)
-```
-
-### Edge Operations
-
-```@docs
-total_edges
 add_layer!
 add_layer_edge!
-has_layer_edge
-```
-
-### Layer Queries
-
-```@docs
-n_layers
-layer_names
-```
-
-### Level Queries
-
-```@docs
-n_levels
-```
-
-## Model Types
-
-### MultiERGMModel
-
-```@docs
-MultiERGMModel
-```
-
-### MultiERGMResult
-
-```@docs
-MultiERGMResult
+layer_network
+as_multilayer
+combine_networks
+split_by_layer
+add_cross_level_edge!
 ```

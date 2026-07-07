@@ -17,28 +17,28 @@ ERGMMulti.jl is a Julia package for fitting Exponential Random Graph Models (ERG
 
 The entire package lives in a single source file: `src/ERGMMulti.jl`. It is organized into these sections:
 
-1. **Data Structures** — `MultiNetwork` (collection of independent networks), `MultilayerNetwork` (same nodes, multiple edge types/layers), `MultilevelNetwork` (hierarchical nesting with membership vectors).
-2. **Multilayer ERGM Terms** — `LayerEdges`, `LayerMutual`, `LayerTriangle` (within-layer); `InterlayerDependence`, `MultiplexMutual`, `BetweenLayers` (between-layer); `WithinLayer` (wrapper to apply any standard ERGM term to a layer); `CrossNetEdges` (multi-network).
+1. **Data Structures** — `MultilayerNetwork` (same actors, L layers; all layers share size and directedness), `MultiNetwork` (independent networks, descriptive), `MultilevelNetwork` (per-level networks + membership Dicts keyed by each level's own node IDs + explicit cross-level edges via `add_cross_level_edge!`).
+2. **Multilayer ERGM Terms** — `LayerEdges/LayerMutual/LayerTriangle` take a layer selector (Int, Vector{Int}, or Colon for pooled); `WithinLayer(term, l)` lifts any ERGM.jl term (reusing its validated change_stat); `InterlayerDependence(l1,l2)` (co-occurrence) and `MultiplexMutual(l1,l2)` (cross-layer reciprocity, ordered dyads). Every term implements `compute(term, m)` and `change_stat_layer(term, m, l, i, j)` — the ADD-DIRECTION change for adding (i,j) in layer l, state-independent (multilayer analogue of ERGM.jl's convention).
 3. **Multilevel ERGM Terms** — `Nestedness`, `CrossLevelEdge`, `LevelHomophily`.
-4. **Model & Estimation** — `MultiERGMModel`, `MultiERGMResult`, `ergm_multi()` entry point with MPLE estimation via `multi_mple()`. `fit_multi_ergm` is an alias for `ergm_multi`.
-5. **Utilities** — `as_multilayer`, `combine_networks`, `split_by_layer`.
-6. **Simulation** — `simulate_multi_ergm` (placeholder, not fully implemented).
+4. **Model & Estimation** — `ergm_multi()` (alias `fit_multi_ergm`): real MPLE (logistic pseudo-likelihood) over the WITHIN-LAYER dyad universe with `offsets::Dict{Int,Float64}` support (fixed per-term coefficients, ergm.multi's offset mechanism); Newton-Raphson with step-halving. Edges-only fits reproduce logit(density) exactly.
+5. **Utilities** — `as_multilayer`; `combine_networks` builds the true BLOCK-DIAGONAL combined Network (n·L vertices, `:layer`/`:actor` vertex attributes, edges within blocks); `split_by_layer` inverts it (rejects cross-block edges).
+6. **Simulation** — `simulate_multi_ergm`: Metropolis sampler restricted to within-layer dyads; addition accepted with min(1, exp(θ'Δg)), removal with the negation.
 
-All term types are subtypes of `AbstractERGMTerm` (from the ERGM package) and implement `name()` and `compute()` methods.
+All term types subtype `AbstractERGMTerm` and extend the ERGM generics via `import ERGM: name, compute, change_stat`.
 
 ## Key Dependencies
 
 - **ERGM.jl** — Base ERGM framework; provides `AbstractERGMTerm`
 - **Network.jl** — Network data structure (`Network{T}`, edge/vertex operations)
 - **Graphs.jl** — Graph primitives (`nv`, `ne`, `edges`, `has_edge`, etc.)
-- **Optim.jl**, **LinearAlgebra**, **Statistics**, **StatsBase** — Numerical optimization and statistics
+- **LinearAlgebra**, **Statistics** — numerics for the Newton solver
 
 ## Conventions
 
-- Julia 1.9+ required (see `Project.toml` compat).
+- Julia 1.12+ required (see `Project.toml` compat).
 - Types are parameterized by vertex type `T` (typically `Int`).
 - Layer and network names use `Symbol` (e.g., `:friendship`, `:advice`).
 - Each ERGM term struct implements `name(t)::String` and `compute(t, data)::Float64`.
-- Change statistics use `change_stat(t, data, layer, i, j)` where applicable.
+- Multilayer change statistics use `change_stat_layer(t, m, layer, i, j)` (add-direction, state-independent); brute-force verified in tests.
 - Functions that mutate use the `!` suffix convention (`add_layer!`, `add_layer_edge!`).
 - Exports are declared at the top of the module; no re-exports from dependencies.

@@ -5,229 +5,86 @@
 [![Build Status](https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/stable/)
 [![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/dev/)
-[![Julia](https://img.shields.io/badge/Julia-1.9+-purple.svg)](https://julialang.org/)
+[![Julia](https://img.shields.io/badge/Julia-1.12+-purple.svg)](https://julialang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <p align="center">
   <img src="docs/src/assets/logo.svg" alt="ERGMMulti.jl icon" width="160">
 </p>
 
-ERGMs for Multiple and Multilayer Networks in Julia.
+ERGMs for multilayer networks in Julia — a port of the R `ergm.multi`
+package (Krivitsky, Koehly & Marcum 2020).
 
-## Overview
+## The block-diagonal mechanism
 
-ERGMMulti.jl provides tools for fitting ERGMs to:
-- Multiple independent networks with shared parameters
-- Multilayer/multiplex networks (same nodes, different edge types)
-- Multilevel networks (networks within networks)
+`ergm.multi` models several relations on the same actors by combining the
+layers into one **block-diagonal network** with layer-membership
+attributes, restricting the dyad universe to within-layer dyads, and using
+layer-aware terms. ERGMMulti.jl implements exactly this:
 
-This package is a Julia port of the R `ergm.multi` package from the StatNet collection.
+- `combine_networks(m)` builds the block-diagonal combined `Network`
+  (`n × L` vertices with `:layer` and `:actor` attributes);
+  `split_by_layer` inverts it.
+- Estimation and simulation operate on the within-layer dyad universe.
 
-## Installation
+## Terms
 
-```julia
-using Pkg
-Pkg.add(url="https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl")
-```
+| Term | Meaning |
+|------|---------|
+| `LayerEdges(l)` / `LayerEdges()` | Per-layer or pooled edge count |
+| `LayerMutual(l)` / `LayerMutual()` | Per-layer or pooled reciprocity |
+| `LayerTriangle(l)` | Per-layer triangles |
+| `WithinLayer(term, l)` | Any ERGM.jl term lifted into layer `l` (the analogue of `Layer(~term)`) |
+| `InterlayerDependence(l1, l2)` | Same-dyad co-occurrence across layers |
+| `MultiplexMutual(l1, l2)` | Cross-layer reciprocity (`i→j` in `l1`, `j→i` in `l2`) |
 
-## Features
-
-- **Data structures**: MultiNetwork, MultilayerNetwork, MultilevelNetwork
-- **Layer terms**: Within-layer and between-layer effects
-- **Multilevel terms**: Cross-level dependencies
-- **Estimation**: MPLE for multi-network ERGMs
+All change statistics use ERGM.jl's add-direction convention and are
+brute-force verified in the tests.
 
 ## Quick Start
 
 ```julia
-using Network
-using ERGMMulti
+using ERGMMulti, Network
 
-# Create multilayer network
-mln = MultilayerNetwork{Int}(50; layer_names=[:friendship, :advice])
+m = MultilayerNetwork(30; directed = true)
+add_layer!(m, :friendship)
+add_layer!(m, :advice)
+add_layer_edge!(m, :friendship, 1, 2)
+# ...
 
-# Add edges to layers
-add_layer_edge!(mln, :friendship, 1, 2)
-add_layer_edge!(mln, :advice, 1, 3)
+# Pooled edges + cross-layer dependence, per-layer offset supported
+result = ergm_multi(m, [LayerEdges(), InterlayerDependence(1, 2)])
 
-# Define terms
-terms = [
-    LayerEdges(:friendship),
-    LayerEdges(:advice),
-    InterlayerDependence(:friendship, :advice)
-]
+# Fix a coefficient (ergm.multi-style offset)
+result = ergm_multi(m, [LayerEdges(), InterlayerDependence(1, 2)];
+                    offsets = Dict(1 => -log(30)))
 
-# Fit model
-result = ergm_multi(mln, terms)
+# Simulate from the model (within-layer Metropolis sampler)
+draws = simulate_multi_ergm(m, [LayerEdges(), InterlayerDependence(1, 2)],
+                            [-1.5, 2.0]; n_sim = 100)
 ```
 
-## MultiNetwork (Multiple Independent Networks)
+Estimation is maximum pseudo-likelihood over the within-layer dyads
+(Newton-Raphson with step-halving); an edges-only fit reproduces
+`logit(density)` per layer exactly, and simulation→estimation round trips
+recover coefficients (tested).
 
-For analyzing multiple networks with shared parameters:
+## Multilevel descriptives
 
-```julia
-# Create from vector of networks
-networks = [net1, net2, net3, net4]
-mn = MultiNetwork(networks; names=[:school1, :school2, :school3, :school4])
-
-# Access
-mn[1]          # First network
-mn[:school1]   # By name
-length(mn)     # Number of networks
-total_edges(mn)
-
-# Terms
-CrossNetEdges()  # Total edges across all networks
-```
-
-## MultilayerNetwork (Multiplex)
-
-For networks with multiple edge types on the same nodes:
-
-```julia
-# Create multilayer network
-mln = MultilayerNetwork{Int}(n; layer_names=[:friendship, :advice, :trust])
-
-# Add/check edges
-add_layer!(mln, :new_layer)
-add_layer_edge!(mln, :friendship, i, j)
-has_layer_edge(mln, :friendship, i, j)
-
-# Query
-n_layers(mln)
-layer_names(mln)
-nv(mln)
-```
-
-## MultilevelNetwork
-
-For hierarchical network structures:
-
-```julia
-# Networks at different levels
-# Level 1: Individual ties
-# Level 2: Group membership
-# Level 3: Organization membership
-
-levels = [individual_net, group_net, org_net]
-membership = [
-    individual_to_group,  # Which group each individual belongs to
-    group_to_org          # Which org each group belongs to
-]
-
-mln = MultilevelNetwork(levels, membership)
-n_levels(mln)
-```
-
-## Layer Terms
-
-### Within-Layer
-```julia
-LayerEdges(:layer)      # Edge count in layer
-LayerMutual(:layer)     # Mutuality in layer
-LayerTriangle(:layer)   # Triangles in layer
-
-# Apply any standard term to a layer
-WithinLayer(Edges(), :friendship)
-WithinLayer(GWESP(0.5), :advice)
-```
-
-### Between-Layer (Interlayer)
-```julia
-# Dependence: edge in layer1 given edge in layer2
-InterlayerDependence(:friendship, :advice)
-
-# Cross-layer mutuality: (i,j) in L1 and (j,i) in L2
-MultiplexMutual(:friendship, :advice)
-
-# Edges spanning layers (if applicable)
-BetweenLayers(:layer1, :layer2)
-```
-
-## Multilevel Terms
-
-```julia
-# Nestedness: edges within groups
-Nestedness(level)
-
-# Cross-level edges
-CrossLevelEdge(level1, level2)
-
-# Homophily by group membership
-LevelHomophily(level)
-```
-
-## Model Fitting
-
-```julia
-# Fit multi-network ERGM
-result = ergm_multi(data, terms; method=:mple)
-
-# View results
-println(result)
-```
-
-## Utilities
-
-```julia
-# Convert dict of networks to multilayer
-mln = as_multilayer(Dict(:L1 => net1, :L2 => net2))
-
-# Combine networks
-combined = combine_networks([net1, net2]; method=:union)
-combined = combine_networks([net1, net2]; method=:intersection)
-
-# Split multilayer into separate networks
-layers = split_by_layer(mln)
-```
-
-## Example: Multiplex Social Network
-
-```julia
-# Friendship and advice ties among employees
-mln = MultilayerNetwork{Int}(100; layer_names=[:friendship, :advice])
-# ... populate layers ...
-
-terms = [
-    LayerEdges(:friendship),              # Friendship density
-    LayerEdges(:advice),                  # Advice density
-    LayerMutual(:friendship),             # Friendship reciprocity
-    LayerMutual(:advice),                 # Advice reciprocity
-    InterlayerDependence(:friendship, :advice),  # Friends give advice
-    MultiplexMutual(:friendship, :advice) # Cross-layer reciprocity
-]
-
-result = ergm_multi(mln, terms)
-
-# Positive InterlayerDependence → friendship predicts advice ties
-```
-
-## Example: Multilevel Organization
-
-```julia
-# Employees within teams within departments
-terms = [
-    Nestedness(1),        # Within-team ties
-    Nestedness(2),        # Within-department ties
-    CrossLevelEdge(1, 2), # Team-department ties
-    LevelHomophily(1)     # Same-team homophily
-]
-```
-
-## Documentation
-
-For more detailed documentation, see:
-
-- [Stable Documentation](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/stable/)
-- [Development Documentation](https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl/dev/)
+`MultilevelNetwork` carries per-level networks, membership maps, and
+explicit cross-level edges (`add_cross_level_edge!`); `Nestedness`,
+`LevelHomophily`, and `CrossLevelEdge` are **descriptive statistics** for
+such designs (they do not participate in estimation).
 
 ## References
 
-1. Krivitsky, P.N., Koehly, L.M., Marcum, C.S. (2020). Exponential-family random graph models for multi-layer networks. *Psychometrika*, 85(3), 630-659.
+1. Krivitsky, P.N., Koehly, L.M. & Marcum, C.S. (2020). Exponential-family
+   random graph models for multi-layer networks. *Psychometrika*, 85(3),
+   630-659.
 
-2. Wang, P., Robins, G., Pattison, P., Lazega, E. (2013). Exponential random graph models for multilevel networks. *Social Networks*, 35(1), 96-115.
-
-3. Hunter, D.R., Handcock, M.S., Butts, C.T., Goodreau, S.M., Morris, M. (2008). ergm: A package to fit, simulate and diagnose exponential-family models for networks. *Journal of Statistical Software*, 24(3), 1-29.
+2. Krivitsky, P.N. ergm.multi: Fit, Simulate and Diagnose Exponential-Family
+   Models for Multiple or Multilayer Networks. R package.
+   [https://cran.r-project.org/package=ergm.multi](https://cran.r-project.org/package=ergm.multi)
 
 ## License
 
