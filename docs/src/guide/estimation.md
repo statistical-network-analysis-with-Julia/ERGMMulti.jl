@@ -8,6 +8,19 @@ with step-halving); standard errors come from the inverse observed
 information of the pseudo-likelihood.
 
 ```julia
+using ERGMMulti, Network, Random
+
+rng = Xoshiro(1)
+m = MultilayerNetwork(20; directed = true)
+add_layer!(m, :friendship)
+add_layer!(m, :advice)
+for i in 1:20, j in 1:20
+    i == j && continue
+    rand(rng) < 0.1 && add_layer_edge!(m, :friendship, i, j)
+    rand(rng) < 0.1 && add_layer_edge!(m, :advice, i, j)
+end
+terms = [LayerEdges(), InterlayerDependence(1, 2)]
+
 result = ergm_multi(m, terms)
 result.coefficients
 result.std_errors

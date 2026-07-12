@@ -4,7 +4,7 @@
 
 ```julia
 using ERGMMulti, Network
-using ERGM: compute   # generic statistic evaluator shared with ERGM.jl
+using ERGM: compute, Triangle   # generic evaluator + terms shared with ERGM.jl
 
 m = MultilayerNetwork(30; directed = true)
 add_layer!(m, :friendship)

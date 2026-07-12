@@ -15,6 +15,23 @@
 ERGMs for multilayer networks in Julia — a port of the R `ergm.multi`
 package (Krivitsky, Koehly & Marcum 2020).
 
+## Installation
+
+Requires Julia 1.12+. ERGMMulti.jl depends on the unregistered
+[Network.jl](https://github.com/statistical-network-analysis-with-Julia/Network.jl) and [ERGM.jl](https://github.com/statistical-network-analysis-with-Julia/ERGM.jl) packages, which must be added first (in this order):
+
+```julia
+using Pkg
+Pkg.add(url="https://github.com/statistical-network-analysis-with-Julia/Network.jl")
+Pkg.add(url="https://github.com/statistical-network-analysis-with-Julia/ERGM.jl")
+Pkg.add(url="https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl")
+```
+
+For development, you can instead clone all ecosystem repositories side by
+side (the monorepo layout) and start Julia with the root workspace project
+(`julia --project=.` in the clone root): the `[sources]` path dependencies
+then wire the packages together with no ordered installs needed.
+
 ## The block-diagonal mechanism
 
 `ergm.multi` models several relations on the same actors by combining the
@@ -53,6 +70,7 @@ add_layer_edge!(m, :friendship, 1, 2)
 # ...
 
 # Pooled edges + cross-layer dependence, per-layer offset supported
+# (fit_multi_ergm is the standardized alias of the same function)
 result = ergm_multi(m, [LayerEdges(), InterlayerDependence(1, 2)])
 
 # Fix a coefficient (ergm.multi-style offset)

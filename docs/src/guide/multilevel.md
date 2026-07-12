@@ -14,6 +14,9 @@ The associated statistics are **descriptive** (they do not enter
 - [`CrossLevelEdge`](@ref): the number of recorded cross-level ties.
 
 ```julia
+using ERGMMulti, Network
+using ERGM: compute
+
 people = network(5; directed = false)
 orgs = network(2; directed = false)
 membership = [Dict(1 => 1, 2 => 1, 3 => 2, 4 => 2, 5 => 2)]

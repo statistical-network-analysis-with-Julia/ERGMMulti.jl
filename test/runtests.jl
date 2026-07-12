@@ -308,9 +308,14 @@ end
 
         m = fixture()
 
-        # Dyad-independent formula → no caveat
+        # Dyad-independent formula → no caveat; renders through the shared
+        # Network.jl coefficient printer (R-style columns, signif codes)
         r_ind = ergm_multi(m, [LayerEdges(1), LayerEdges(2)])
-        @test !occursin("dyad-dependent", sprint(show, r_ind))
+        out_ind = sprint(show, r_ind)
+        @test !occursin("dyad-dependent", out_ind)
+        @test occursin("Pr(>|z|)", out_ind)
+        @test occursin("Std.Error", out_ind)
+        @test count("Signif. codes:", out_ind) == 1
 
         # Dyad-dependent formula → pseudo-likelihood warning
         r_dep = ergm_multi(m, [LayerEdges(), InterlayerDependence(1, 2)])
@@ -318,6 +323,44 @@ end
         @test occursin("dyad-dependent", out)
         @test occursin("pseudolikelihood", out)
         @test occursin("anticonservative", out)
+    end
+
+    @testset "Goodness of fit" begin
+        m = fixture()
+        r = ergm_multi(m, [LayerEdges(1), LayerEdges(2)])
+
+        g = gof(r; n_sim=30, burnin=300, interval=30, rng=Random.Xoshiro(41))
+
+        # gof extends Network.jl's shared generic and returns the shared
+        # GOFResult container
+        @test ERGMMulti.gof === Network.gof
+        @test g isa GOFResult
+        @test n_simulations(g) == 30
+        @test length(g.statistics) == 2
+
+        # Panel 1: the fitted terms' statistics
+        stats = g.statistics[1]
+        @test stats.name == "model statistics"
+        @test stats.labels == ["L.edges.1", "L.edges.2"]
+        @test stats.observed == [4.0, 4.0]
+        @test all(0.0 .< stats.p_values .<= 1.0)
+        # The saturated per-layer edges model should fit its own data
+        @test all(stats.p_values .> 0.01)
+
+        # Panel 2: per-layer edge counts (same observations here)
+        le = g.statistics[2]
+        @test le.name == "layer edges"
+        @test le.labels == ["friendship", "advice"]
+        @test le.observed == [4.0, 4.0]
+
+        # Reproducible under the same seed
+        g2 = gof(r; n_sim=30, burnin=300, interval=30, rng=Random.Xoshiro(41))
+        @test g2.statistics[1].simulated == stats.simulated
+
+        # ... and renders through the shared formatted display
+        out = sprint(show, g)
+        @test occursin("Goodness-of-fit assessment: Multilayer ERGM", out)
+        @test occursin("MC p-value", out)
     end
 
     @testset "Aliases" begin
