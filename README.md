@@ -65,7 +65,9 @@ draws = simulate_multi_ergm(m, [LayerEdges(), InterlayerDependence(1, 2)],
 ```
 
 Estimation is maximum pseudo-likelihood over the within-layer dyads
-(Newton-Raphson with step-halving); an edges-only fit reproduces
+(via the shared `ERGM.newton_fit` Newton-Raphson-with-step-halving
+optimizer); fits of dyad-dependent formulas print a standard-error
+caveat, and an edges-only fit reproduces
 `logit(density)` per layer exactly, and simulation→estimation round trips
 recover coefficients (tested).
 

@@ -4,6 +4,7 @@
 
 ```julia
 using ERGMMulti, Network
+using ERGM: compute   # generic statistic evaluator shared with ERGM.jl
 
 m = MultilayerNetwork(30; directed = true)
 add_layer!(m, :friendship)
@@ -13,6 +14,8 @@ add_layer_edge!(m, :friendship, 1, 2)
 add_layer_edge!(m, :advice, 1, 2)
 
 # Or from existing same-sized networks
+friend_net = network(30; directed = true)
+advice_net = network(30; directed = true)
 m = as_multilayer([friend_net, advice_net], [:friendship, :advice])
 ```
 

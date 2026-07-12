@@ -1,6 +1,7 @@
 using ERGMMulti
 using ERGM
 using Network
+using Graphs: src, dst
 using Random
 using Statistics
 using Test
@@ -108,7 +109,8 @@ end
         terms = [LayerEdges(1), LayerEdges(), LayerMutual(),
                  LayerTriangle(2), WithinLayer(Triangle(), 1),
                  InterlayerDependence(1, 2), MultiplexMutual(1, 2),
-                 WithinLayer(TwoPath(), 2)]
+                 WithinLayer(TwoPath(), 2), WithinLayer(Kstar(2), 1),
+                 WithinLayer(GWESP(0.5), 2), WithinLayer(GWDegree(0.3), 1)]
 
         for term in terms, l in 1:2, i in 1:4, j in 1:4
             i == j && continue
@@ -179,6 +181,42 @@ end
         @test mean_edges ≈ 2 * 56 * p_edge rtol = 0.2
     end
 
+    @testset "Simulation preserves vertex attributes (regression)" begin
+        # Regression: _copy_net used to drop vertex attributes, so attribute
+        # terms (e.g. WithinLayer(NodeMatch, l)) saw all-zero change stats
+        # on the sampler's working copies
+        rng = Random.Xoshiro(19)
+        m = MultilayerNetwork(8; directed=true)
+        add_layer!(m, :a)
+        add_layer!(m, :b)
+        set_vertex_attribute!(layer_network(m, :a), :group,
+                              Dict(v => (v <= 4 ? "x" : "y") for v in 1:8))
+
+        c = ERGMMulti._copy_net(layer_network(m, :a))
+        @test get_vertex_attribute(c, :group, 5) == "y"
+
+        terms = [LayerEdges(), WithinLayer(NodeMatch(:group), 1)]
+        draws = simulate_multi_ergm(m, terms, [-2.0, 3.0];
+                                    n_sim=20, burnin=3000, interval=200, rng=rng)
+        @test get_vertex_attribute(layer_network(draws[1], :a), :group, 1) == "x"
+
+        # Planted homophily expressed in layer 1: same-group ties outnumber
+        # cross-group ones despite fewer same-group dyads (24 vs 32)
+        same = 0
+        cross = 0
+        for d in draws
+            for e in edges(layer_network(d, 1))
+                ((src(e) <= 4) == (dst(e) <= 4)) ? (same += 1) : (cross += 1)
+            end
+        end
+        @test same > cross
+
+        # And fitting a draw recovers the homophily sign
+        r = ergm_multi(draws[end], terms)
+        @test r.converged
+        @test r.coefficients[2] > 0
+    end
+
     @testset "Estimation recovers simulated coefficients" begin
         rng = Random.Xoshiro(5)
         m = MultilayerNetwork(10; directed=true)
@@ -229,6 +267,57 @@ end
         mn = MultiNetwork([n1, n2], [:x, :y])
         @test length(mn) == 2
         @test compute(CrossNetEdges(), mn) == 3.0
+    end
+
+    @testset "StatsAPI accessors" begin
+        m = fixture()
+        r = ergm_multi(m, [LayerEdges(1), LayerEdges(2)])
+
+        @test coef(r) == r.coefficients
+        @test stderror(r) == r.std_errors
+        V = vcov(r)
+        @test size(V) == (2, 2)
+        @test sqrt(V[1, 1]) ≈ r.std_errors[1]
+        @test loglikelihood(r) == r.loglik
+        @test aic(r) == r.aic
+        @test bic(r) == r.bic
+        @test nobs(r) == 24  # 2 layers × 12 ordered dyads
+        @test dof(r) == 2
+
+        # Offsets: fixed coefficients get NaN vcov rows and don't add dof
+        ro = ergm_multi(m, [LayerEdges(), InterlayerDependence(1, 2)];
+                        offsets=Dict(1 => -1.0))
+        @test isnan(vcov(ro)[1, 1])
+        @test !isnan(vcov(ro)[2, 2])
+        @test dof(ro) == 1
+    end
+
+    @testset "Dyad-dependence classification and caveat in show()" begin
+        # Trait values (ERGM.is_dyad_dependent extended for multilayer terms;
+        # in the multilayer model the dyads are (layer, i, j) triples, so
+        # cross-layer terms are dyad-dependent too)
+        @test !is_dyad_dependent(LayerEdges())
+        @test !is_dyad_dependent(LayerEdges(1))
+        @test !is_dyad_dependent(WithinLayer(Edges(), 1))
+        @test !is_dyad_dependent(WithinLayer(NodeMatch(:g), 1))
+        @test is_dyad_dependent(WithinLayer(Triangle(), 1))
+        @test is_dyad_dependent(LayerMutual())
+        @test is_dyad_dependent(LayerTriangle(2))
+        @test is_dyad_dependent(InterlayerDependence(1, 2))
+        @test is_dyad_dependent(MultiplexMutual(1, 2))
+
+        m = fixture()
+
+        # Dyad-independent formula → no caveat
+        r_ind = ergm_multi(m, [LayerEdges(1), LayerEdges(2)])
+        @test !occursin("dyad-dependent", sprint(show, r_ind))
+
+        # Dyad-dependent formula → pseudo-likelihood warning
+        r_dep = ergm_multi(m, [LayerEdges(), InterlayerDependence(1, 2)])
+        out = sprint(show, r_dep)
+        @test occursin("dyad-dependent", out)
+        @test occursin("pseudolikelihood", out)
+        @test occursin("anticonservative", out)
     end
 
     @testset "Aliases" begin

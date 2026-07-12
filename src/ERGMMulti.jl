@@ -25,7 +25,14 @@ using Network
 using Random
 using Statistics
 
-import ERGM: name, compute, change_stat
+import ERGM: name, compute, change_stat, is_dyad_dependent, newton_fit
+import StatsAPI
+import StatsAPI: coef, stderror, vcov, loglikelihood, aic, bic, nobs, dof
+
+# `gof` extends the ONE shared Network.jl generic (every model package adds
+# methods for its own result types), so `gof(fit)` works uniformly across the
+# ecosystem and loading several model packages never collides on the name.
+import Network: gof
 
 # Data structures
 export MultiNetwork, MultilayerNetwork, MultilevelNetwork
@@ -47,8 +54,15 @@ export ergm_multi, fit_multi_ergm, MultiERGMModel, MultiERGMResult
 # Simulation
 export simulate_multi_ergm
 
+# Diagnostics (`gof` is Network.jl's shared generic, extended with a method
+# for MultiERGMResult)
+export gof
+
 # Utilities
 export as_multilayer, combine_networks, split_by_layer
+
+# StatsAPI methods (re-exported so `coef(fit)` etc. work with just `using ERGMMulti`)
+export coef, stderror, vcov, loglikelihood, aic, bic, nobs, dof
 
 # =============================================================================
 # Data Structures
@@ -488,6 +502,16 @@ function change_stat_layer(t::MultiplexMutual, m::MultilayerNetwork,
     return 0.0
 end
 
+# Dependence classification (extends ERGM.is_dyad_dependent, whose fallback
+# is the conservative `true`). In the multilayer model the "dyads" are
+# (layer, i, j) triples: a term is dyad-dependent when its change statistic
+# depends on the state of *any other* (layer, dyad) — so the cross-layer
+# terms (`InterlayerDependence`, `MultiplexMutual`) and the within-layer
+# structural terms (`LayerMutual`, `LayerTriangle`) are dyad-dependent
+# (covered by the fallback), while pure edge-count terms are not.
+is_dyad_dependent(::LayerEdges) = false
+is_dyad_dependent(t::WithinLayer) = is_dyad_dependent(t.term)
+
 """
     CrossNetEdges <: AbstractERGMTerm
 
@@ -592,13 +616,14 @@ end
     MultiERGMResult
 
 Results from `ergm_multi`. Offset terms report their fixed coefficient
-with `NaN` standard error; `loglik` is the maximized pseudo-log-likelihood
-over the within-layer dyads.
+with `NaN` standard error (and `NaN` rows/columns of `vcov`); `loglik` is
+the maximized pseudo-log-likelihood over the within-layer dyads.
 """
 struct MultiERGMResult
     model::MultiERGMModel
     coefficients::Vector{Float64}
     std_errors::Vector{Float64}
+    vcov::Matrix{Float64}
     loglik::Float64
     aic::Float64
     bic::Float64
@@ -614,11 +639,27 @@ function Base.show(io::IO, r::MultiERGMResult)
                 "converged: $(r.converged)")
     println(io)
     println(io, "Coefficients:")
-    for (k, term) in enumerate(r.model.terms)
-        tag = haskey(r.model.offsets, k) ? " (offset)" : ""
-        se = isnan(r.std_errors[k]) ? "--" : string(round(r.std_errors[k], digits=4))
-        println(io, "  $(rpad(name(term) * tag, 28)) " *
-                    "$(lpad(round(r.coefficients[k], digits=4), 10)) (SE: $se)")
+
+    # Shared ecosystem presentation layer (Network.print_coeftable):
+    # Estimate / Std.Error / z value / Pr(>|z|) with significance codes.
+    # Offset terms are tagged and print NaN standard errors / p-values
+    # (their coefficients are fixed, not estimated).
+    term_names = [name(term) * (haskey(r.model.offsets, k) ? " (offset)" : "")
+                  for (k, term) in enumerate(r.model.terms)]
+    z = r.coefficients ./ r.std_errors
+    print_coeftable(io, term_names, r.coefficients, r.std_errors,
+                    ERGM._z_pvalues(z); z_values=z)
+
+    # Honest-uncertainty caveat (mirroring ERGM.jl's show): pseudo-likelihood
+    # fits of dyad-dependent formulas have suspect inverse-Hessian standard
+    # errors. Dyad-independent formulas need no caveat — there the
+    # pseudo-likelihood is the likelihood.
+    if any(is_dyad_dependent(t) for t in r.model.terms)
+        println(io)
+        println(io, "Warning: this model contains dyad-dependent terms and was fit by")
+        println(io, "maximum pseudolikelihood (MPLE). The standard errors are based on")
+        println(io, "the naive pseudolikelihood and are suspect (typically")
+        println(io, "anticonservative); treat the inference with caution.")
     end
 end
 
@@ -693,43 +734,19 @@ function ergm_multi(m::MultilayerNetwork, terms::Vector{<:AbstractERGMTerm};
         return ll, grad, hess
     end
 
-    β = zeros(pf)
-    ll, grad, hess = derivatives(β)
-    converged = false
-
-    for _ in 1:maxiter
-        step = try
-            -hess \ grad
-        catch
-            break
-        end
-
-        stepsize = 1.0
-        ll_new, grad_new, hess_new = ll, grad, hess
-        for _ in 1:10
-            ll_new, grad_new, hess_new = derivatives(β .+ stepsize .* step)
-            ll_new >= ll && break
-            stepsize /= 2
-        end
-
-        β .+= stepsize .* step
-        ll_change = abs(ll_new - ll)
-        ll, grad, hess = ll_new, grad_new, hess_new
-
-        if ll_change < tol && norm(grad) < sqrt(tol)
-            converged = true
-            break
-        end
-    end
-
-    se_free = try
-        sqrt.(abs.(diag(pinv(-hess))))
-    catch
-        fill(NaN, pf)
-    end
+    # Maximize the pseudo-likelihood with the shared ERGM.newton_fit
+    # optimizer (Newton–Raphson with step halving)
+    fit = newton_fit(derivatives, zeros(pf); maxiter=maxiter, tol=tol)
+    β = fit.θ
+    ll = fit.loglik
+    converged = fit.converged
+    vcov_free = fit.vcov
+    se_free = fit.se
 
     coefficients = zeros(p)
     std_errors = fill(NaN, p)
+    vcov_full = fill(NaN, p, p)
+    vcov_full[free, free] = vcov_free
     for (kf, k) in enumerate(free)
         coefficients[k] = β[kf]
         std_errors[k] = se_free[kf]
@@ -742,10 +759,30 @@ function ergm_multi(m::MultilayerNetwork, terms::Vector{<:AbstractERGMTerm};
     bic = -2 * ll + pf * log(n_dyads)
 
     model = MultiERGMModel(collect(AbstractERGMTerm, terms), m, offsets)
-    return MultiERGMResult(model, coefficients, std_errors, ll, aic, bic, converged)
+    return MultiERGMResult(model, coefficients, std_errors, vcov_full, ll,
+                           aic, bic, converged)
 end
 
 const fit_multi_ergm = ergm_multi
+
+# StatsAPI interface: methods on the shared statistics generics (mirroring
+# ERGM.jl), so results interoperate with StatsBase/GLM-style tooling
+
+# Number of within-layer dyads — the model's dyad universe
+function _n_within_dyads(m::MultilayerNetwork)
+    per = m.directed ? m.n * (m.n - 1) : m.n * (m.n - 1) ÷ 2
+    return n_layers(m) * per
+end
+
+StatsAPI.coef(r::MultiERGMResult) = r.coefficients
+StatsAPI.stderror(r::MultiERGMResult) = r.std_errors
+StatsAPI.vcov(r::MultiERGMResult) = r.vcov
+StatsAPI.loglikelihood(r::MultiERGMResult) = r.loglik
+StatsAPI.aic(r::MultiERGMResult) = r.aic
+StatsAPI.bic(r::MultiERGMResult) = r.bic
+StatsAPI.nobs(r::MultiERGMResult) = _n_within_dyads(r.model.network)
+StatsAPI.dof(r::MultiERGMResult) =
+    length(r.coefficients) - length(r.model.offsets)
 
 # =============================================================================
 # Simulation
@@ -811,12 +848,55 @@ function simulate_multi_ergm(m::MultilayerNetwork,
     return draws
 end
 
-function _copy_net(net::Network{T}) where T
-    c = Network{T}(; n=Int(nv(net)), directed=is_directed(net))
-    for e in edges(net)
-        add_edge!(c, src(e), dst(e))
-    end
-    return c
+# Attribute-preserving copy: delegates to `Base.copy(::Network)`, which
+# duplicates the graph and all vertex/edge/network attributes, so attribute
+# terms (e.g. `WithinLayer(NodeMatch(...), l)`) keep seeing covariates on
+# the sampler's working copies.
+_copy_net(net::Network) = copy(net)
+
+# =============================================================================
+# Goodness of fit
+# =============================================================================
+
+"""
+    gof(result::MultiERGMResult; n_sim=100, burnin=1000, interval=100,
+        rng=Random.default_rng()) -> GOFResult
+
+Goodness-of-fit assessment for a fitted multilayer ERGM: simulate `n_sim`
+multilayer networks at the fitted (and offset) coefficients with
+[`simulate_multi_ergm`](@ref) and compare the observed data against the
+simulated distributions on two panels:
+
+- `"model statistics"` — the fitted terms' statistics (one level per term);
+- `"layer edges"` — the edge count of each layer (one level per layer).
+
+Extends Network.jl's shared `gof` generic and returns the shared
+`Network.GOFResult` container; per-level p-values are two-sided Monte-Carlo
+p-values computed with the `(1 + k)/(N + 1)` estimator (never exactly zero).
+"""
+function gof(result::MultiERGMResult; n_sim::Int=100, burnin::Int=1000,
+             interval::Int=100,
+             rng::Random.AbstractRNG=Random.default_rng())
+    m = result.model.network
+    terms = result.model.terms
+
+    sims = simulate_multi_ergm(m, terms, result.coefficients; n_sim=n_sim,
+                               burnin=burnin, interval=interval, rng=rng)
+
+    # Panel 1: the model's own statistics, observed vs simulated
+    obs_stats = [compute(t, m) for t in terms]
+    sim_stats = [compute(t, s) for s in sims, t in terms]
+    stats_panel = GOFStatistic("model statistics", name.(terms),
+                               obs_stats, sim_stats)
+
+    # Panel 2: per-layer edge counts
+    L = n_layers(m)
+    obs_edges = [Float64(ne(m.layers[l])) for l in 1:L]
+    sim_edges = [Float64(ne(s.layers[l])) for s in sims, l in 1:L]
+    edges_panel = GOFStatistic("layer edges", m.layer_names,
+                               obs_edges, sim_edges)
+
+    return GOFResult([stats_panel, edges_panel]; model="Multilayer ERGM")
 end
 
 end # module
