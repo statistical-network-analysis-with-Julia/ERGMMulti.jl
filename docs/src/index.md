@@ -32,3 +32,9 @@ Depth = 2
 
 1. Krivitsky, P.N., Koehly, L.M. & Marcum, C.S. (2020). Exponential-family
    random graph models for multi-layer networks. *Psychometrika*, 85(3), 630-659.
+
+## Module
+
+```@docs
+ERGMMulti
+```

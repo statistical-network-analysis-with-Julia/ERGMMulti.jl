@@ -1,0 +1,81 @@
+name = "twolayer_ergm_multi"
+
+[provenance]
+r_version = "4.6.1"
+ergm_multi_version = "0.3.0"
+ergm_version = "4.12.0"
+network_version = "1.20.0"
+seed = 20260713
+script = "test/fixtures/r/twolayer_ergm_multi.R"
+date = "2026-07-13"
+dataset = "simulated: 2 directed layers on the same 20 actors, alternating two-group `grp`; drawn from the dyad-independent model in [values].generating_* -- the layers themselves are frozen below"
+model_free = "Networks(list(net1,net2)) ~ N(~edges + nodematch(\"grp\"), ~factor(.NetworkID) - 1) -- per-layer edges and nodematch, DYAD-INDEPENDENT so ergm fits it by MPLE = exact MLE"
+model_offset = "~ N(~edges, ~factor(.NetworkID) - 1) + offset(N(~nodematch(\"grp\"), ~factor(.NetworkID) - 1)), offset.coef = (0.75, 0.40)"
+exact_estimator = "the same two logistic regressions refit with glm at epsilon = 1e-14, since ergm stops its MPLE glm at the default 1e-8"
+
+[tolerance]
+# Every term here is DYAD-INDEPENDENT, so the likelihood factorizes over the
+# (layer, i, j) dyads: ergm's MPLE is the exact MLE and ERGMMulti.jl's MPLE is
+# the same exact MLE. There is no Monte Carlo on either side and nothing to
+# average over. The only difference two correct implementations can have is
+# where their optimizers stop.
+#
+# `exact_*` below is the same estimator taken to convergence (glm at
+# epsilon = 1e-14 rather than ergm's default 1e-8), and THAT is the assertion
+# with teeth: 1e-6, which is ~1e-5 of the smallest standard error in the
+# model. If it fails, the (layer, i, j) dyad universe or a change statistic is
+# wrong. DO NOT LOOSEN IT.
+exact_coefficients = 1e-6
+exact_std_errors = 1e-6
+exact_offset_coefficients = 1e-6
+#
+# Against ergm.multi AS SHIPPED the tolerance must also absorb ergm's own
+# glm slack, which `mple_vs_exact_*` in [values] measures. It is small here
+# (unlike the sibling TERGM fixture, where it dominated), but it is measured
+# rather than assumed, and the tolerance is set from the measurement.
+coefficients = 1e-06
+std_errors = 0.0001
+offset_coefficients = 1e-06
+
+[values]
+# --- the two layers, frozen. Julia rebuilds them exactly. ---------------
+n_actors = 20
+n_layers = 2
+directed = true
+grp = ["a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b"]
+edge_counts = [100, 55]
+layer_src = [[6, 7, 20, 9, 10, 16, 18, 19, 2, 4, 11, 13, 14, 16, 19, 6, 10, 16, 20, 3, 7, 12, 13, 16, 4, 5, 7, 8, 9, 14, 16, 17, 18, 19, 20, 10, 13, 7, 13, 14, 16, 20, 1, 2, 4, 5, 7, 11, 19, 2, 8, 9, 17, 18, 3, 13, 8, 9, 15, 18, 20, 1, 11, 12, 3, 5, 8, 10, 11, 3, 5, 7, 11, 13, 17, 10, 17, 3, 5, 11, 13, 14, 1, 2, 3, 10, 11, 12, 20, 2, 8, 12, 14, 15, 17, 18, 8, 9, 10, 18], [7, 10, 16, 1, 8, 9, 11, 13, 20, 7, 9, 12, 13, 20, 8, 10, 11, 19, 8, 9, 13, 16, 1, 9, 13, 14, 18, 5, 15, 8, 20, 3, 6, 17, 20, 1, 3, 9, 14, 19, 1, 6, 6, 8, 9, 12, 19, 2, 8, 12, 13, 15, 17, 17, 19]]
+layer_dst = [[1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 12, 13, 13, 13, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 16, 16, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 20, 20, 20, 20], [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 7, 8, 9, 10, 10, 11, 11, 11, 11, 12, 13, 13, 13, 13, 14, 14, 15, 15, 15, 15, 15, 16, 18, 18, 18, 19, 19, 20, 20]]
+
+# What the layers were drawn from. NOT asserted -- the estimator is being
+# compared to R, not to truth -- but a sanity anchor.
+generating_layer1 = [-1.5, 0.90000000000000002]
+generating_layer2 = [-2, 0.40000000000000002]
+
+# --- (a) the free fit ---------------------------------------------------
+term_names = ["N(factor(.NetworkID)1)~edges", "N(factor(.NetworkID)2)~edges", "N(factor(.NetworkID)1)~nodematch.grp", "N(factor(.NetworkID)2)~nodematch.grp"]
+coefficients = [-1.4178427188543619, -1.9924301633954296, 0.74959308991614326, 0.42247106194009187]
+std_errors = [0.17847179613566569, 0.21759224336234745, 0.23801047452376489, 0.29379543690170001]
+# ...and the same estimator taken to convergence. This is what ERGMMulti.jl
+# is actually held to.
+exact_coefficients = [-1.4178427188548182, -1.9924301646902052, 0.74959308991659834, 0.42247106322989481]
+exact_std_errors = [0.17847186267097487, 0.21759706993102776, 0.23801052441590642, 0.29379918099727714]
+# How far ergm.multi AS SHIPPED sits from that exact optimum (its glm stops
+# at the default epsilon = 1e-8).
+mple_vs_exact_coef = 1.2947756200532012e-09
+mple_vs_exact_se = 4.8265686803106167e-06
+
+# --- (b) the OFFSET fit: nodematch pinned, edges free -------------------
+offset_values = [0.75, 0.40000000000000002]
+offset_term_names = ["L1.nodematch.grp", "L2.nodematch.grp"]
+offset_free_term_names = ["L.edges.1", "L.edges.2"]
+offset_coefficients = [-1.4180715232500758, -1.9801485650452435]
+offset_std_errors = [0.11808037072852974, 0.14616365901863609]
+exact_offset_coefficients = [-1.4180715232500838, -1.9801485651283948]
+
+# --- (c) the NULL comparison: the same model with NO nodematch at all ---
+# This is where a fit lands if the offsets are dropped from the linear
+# predictor instead of merely from the parameter vector -- the exact bug an
+# offset test is for. The Julia testset asserts its offset fit is NOT this,
+# so a test that passed by doing nothing on both sides cannot pass here.
+no_nodematch_coefficients = [-1.0296194171811583, -1.7764919968923216]

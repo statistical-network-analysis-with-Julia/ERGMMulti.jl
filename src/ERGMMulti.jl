@@ -21,18 +21,25 @@ using Distributions
 using ERGM
 using Graphs
 using LinearAlgebra
-using Network
+using Networks
 using Random
 using Statistics
 
-import ERGM: name, compute, change_stat, is_dyad_dependent, newton_fit
+import ERGM: name, compute, change_stat, is_dyad_dependent, newton_fit,
+              logistic_derivatives
 import StatsAPI
 import StatsAPI: coef, stderror, vcov, loglikelihood, aic, bic, nobs, dof
 
-# `gof` extends the ONE shared Network.jl generic (every model package adds
+# `gof` extends the ONE shared Networks.jl generic (every model package adds
 # methods for its own result types), so `gof(fit)` works uniformly across the
 # ecosystem and loading several model packages never collides on the name.
-import Network: gof
+import Networks: gof
+
+# The shared result-metadata protocol (Networks.jl `src/results.jl`): the
+# generic accessors that say what a fit actually did. Imported by name because
+# ERGMMulti adds methods for `MultiERGMResult`; `fit_metadata(fit)` collects them.
+import Networks: estimand, objective, is_exact, se_method, missing_method,
+                 approximations
 
 # Data structures
 export MultiNetwork, MultilayerNetwork, MultilevelNetwork
@@ -54,7 +61,7 @@ export ergm_multi, fit_multi_ergm, MultiERGMModel, MultiERGMResult
 # Simulation
 export simulate_multi_ergm
 
-# Diagnostics (`gof` is Network.jl's shared generic, extended with a method
+# Diagnostics (`gof` is Networks.jl's shared generic, extended with a method
 # for MultiERGMResult)
 export gof
 
@@ -618,6 +625,13 @@ end
 Results from `ergm_multi`. Offset terms report their fixed coefficient
 with `NaN` standard error (and `NaN` rows/columns of `vcov`); `loglik` is
 the maximized pseudo-log-likelihood over the within-layer dyads.
+
+`se_type` records how `std_errors`/`vcov` were ACTUALLY obtained — `:hessian`
+(the inverse negative pseudo-Hessian, anticonservative under dependence) or
+`:bootstrap` (the parametric bootstrap of `ergm_multi(...; se=:bootstrap)`). It
+is what `Networks.se_method(fit)` reports, and what `show` reads before deciding
+whether the anticonservatism caveat still applies. Offset rows stay `NaN` under
+either option: a fixed coefficient carries no uncertainty.
 """
 struct MultiERGMResult
     model::MultiERGMModel
@@ -628,7 +642,29 @@ struct MultiERGMResult
     aic::Float64
     bic::Float64
     converged::Bool
+    se_type::Symbol
 end
+
+# Backwards-compatible constructor: a result built without an `se_type` reports
+# the inverse-Hessian standard errors it in fact had.
+MultiERGMResult(model, coefficients, std_errors, vcov, loglik, aic, bic,
+                converged) =
+    MultiERGMResult(model, coefficients, std_errors, vcov, loglik, aic, bic,
+                    converged, :hessian)
+
+"""
+    _has_dyad_dependent(model::MultiERGMModel) -> Bool
+
+Whether any term of the multilayer formula is dyad-dependent, where a "dyad" is
+a `(layer, i, j)` triple (see the dependence classification above). This is THE
+predicate that decides whether the within-layer MPLE is an approximation: with
+only dyad-independent terms the conditionals it multiplies are the model's own,
+so the pseudo-likelihood is the likelihood. Defined once and used by both
+`show(::MultiERGMResult)` (the prose caveat) and `is_exact(::MultiERGMResult)`
+(the machine-readable answer), so the two cannot drift apart.
+"""
+_has_dyad_dependent(model::MultiERGMModel) =
+    any(is_dyad_dependent(t) for t in model.terms)
 
 function Base.show(io::IO, r::MultiERGMResult)
     println(io, "Multilayer ERGM Results")
@@ -637,10 +673,12 @@ function Base.show(io::IO, r::MultiERGMResult)
                 "pseudo-log-likelihood: $(round(r.loglik, digits=4))")
     println(io, "AIC: $(round(r.aic, digits=2)), BIC: $(round(r.bic, digits=2)); " *
                 "converged: $(r.converged)")
+    println(io, "Std. errors: ", r.se_type === :bootstrap ?
+                "parametric bootstrap" : "inverse pseudo-Hessian")
     println(io)
     println(io, "Coefficients:")
 
-    # Shared ecosystem presentation layer (Network.print_coeftable):
+    # Shared ecosystem presentation layer (Networks.print_coeftable):
     # Estimate / Std.Error / z value / Pr(>|z|) with significance codes.
     # Offset terms are tagged and print NaN standard errors / p-values
     # (their coefficients are fixed, not estimated).
@@ -653,14 +691,91 @@ function Base.show(io::IO, r::MultiERGMResult)
     # Honest-uncertainty caveat (mirroring ERGM.jl's show): pseudo-likelihood
     # fits of dyad-dependent formulas have suspect inverse-Hessian standard
     # errors. Dyad-independent formulas need no caveat — there the
-    # pseudo-likelihood is the likelihood.
-    if any(is_dyad_dependent(t) for t in r.model.terms)
+    # pseudo-likelihood is the likelihood. Neither does a bootstrap fit: a
+    # parametric-bootstrap covariance does not treat the dyads as independent,
+    # so calling it anticonservative would be a lie. (The POINT ESTIMATE is
+    # still an MPLE either way, which is what the remaining note says.)
+    if _has_dyad_dependent(r.model)
         println(io)
-        println(io, "Warning: this model contains dyad-dependent terms and was fit by")
-        println(io, "maximum pseudolikelihood (MPLE). The standard errors are based on")
-        println(io, "the naive pseudolikelihood and are suspect (typically")
-        println(io, "anticonservative); treat the inference with caution.")
+        if r.se_type === :bootstrap
+            println(io, "Note: this model contains dyad-dependent terms and was fit by")
+            println(io, "maximum pseudolikelihood (MPLE), so the point estimates are biased in")
+            println(io, "finite samples. The standard errors are a parametric bootstrap and do")
+            println(io, "not assume the dyad conditionals are independent.")
+        else
+            println(io, "Warning: this model contains dyad-dependent terms and was fit by")
+            println(io, "maximum pseudolikelihood (MPLE). The standard errors are based on")
+            println(io, "the naive pseudolikelihood and are suspect (typically")
+            println(io, "anticonservative); treat the inference with caution, or refit with")
+            println(io, "`se=:bootstrap` for a parametric-bootstrap covariance.")
+        end
     end
+end
+
+# ============================================================================
+# The shared result-metadata protocol (Networks.jl `src/results.jl`)
+# ============================================================================
+#
+# `fit_metadata(fit)` collects these accessors. They read the SAME
+# `_has_dyad_dependent` predicate as the prose caveat in `show`, so the printed
+# warning and the machine-readable answer cannot disagree.
+
+estimand(::MultiERGMResult) = :multilayer_ergm
+
+objective(::MultiERGMResult) = :pseudolikelihood
+
+"""
+    is_exact(r::MultiERGMResult) -> Bool
+
+`true` iff every term is dyad-independent over the `(layer, i, j)` dyad universe
+— there the within-layer pseudo-likelihood *is* the likelihood and the MPLE is
+the exact MLE. Any cross-layer or within-layer structural term (`LayerMutual`,
+`LayerTriangle`, `InterlayerDependence`, `MultiplexMutual`, ...) makes the same
+estimator an approximation, and this reports `false`.
+"""
+is_exact(r::MultiERGMResult) = !_has_dyad_dependent(r.model)
+
+"""
+    se_method(r::MultiERGMResult) -> Symbol
+
+What the reported standard errors ACTUALLY are: `:hessian` (the inverse negative
+pseudo-Hessian) or `:bootstrap` (the parametric bootstrap of
+`ergm_multi(...; se=:bootstrap)`). Read straight off the fit, so it can never
+claim an estimator that was not used.
+"""
+se_method(r::MultiERGMResult) = r.se_type
+
+# `ergm_multi` calls `require_observed` on every layer with the default `:error`
+# policy: the MPLE enumerates every within-layer dyad as observed, so a masked
+# dyad would enter the pseudo-likelihood at its face value and is refused.
+missing_method(::MultiERGMResult) = :rejected
+
+function approximations(r::MultiERGMResult)
+    out = String[]
+    if _has_dyad_dependent(r.model)
+        # The POINT ESTIMATE is a pseudo-likelihood estimate however the standard
+        # errors were computed: the bootstrap replaces the covariance, not θ̂.
+        push!(out, "maximum pseudo-likelihood of a dyad-dependent multilayer " *
+                   "model: the (layer, i, j) conditionals are multiplied as if " *
+                   "independent, so the point estimates are biased in finite samples")
+        if r.se_type === :hessian
+            push!(out, "inverse-Hessian standard errors of the naive pseudo-likelihood: " *
+                       "expected anticonservative under dependence (refit with " *
+                       "`se=:bootstrap` for a parametric-bootstrap covariance)")
+        end
+    end
+    if r.se_type === :bootstrap
+        push!(out, "standard errors are a parametric bootstrap of the multilayer MPLE " *
+                   "(simulate within-layer networks at θ̂, refit, empirical " *
+                   "covariance): they do not assume the (layer, i, j) conditionals " *
+                   "are independent, but they are Monte-Carlo estimates and assume " *
+                   "the fitted model generated the data")
+    end
+    isempty(r.model.offsets) ||
+        push!(out, "$(length(r.model.offsets)) offset term(s) held fixed, not " *
+                   "estimated: their coefficients carry no uncertainty (NaN " *
+                   "standard errors) and the reported dof excludes them")
+    return out
 end
 
 # All within-layer dyads of the multilayer network as (l, i, j)
@@ -677,7 +792,9 @@ end
 
 """
     ergm_multi(m::MultilayerNetwork, terms; offsets=Dict{Int,Float64}(),
-               maxiter=100, tol=1e-8) -> MultiERGMResult
+               maxiter=100, tol=1e-8, se=:hessian, n_boot=100,
+               boot_burnin=1000, boot_interval=100, rng=Random.default_rng())
+        -> MultiERGMResult
 
 Fit a multilayer ERGM by maximum pseudo-likelihood over the
 **within-layer dyads** (the dyad universe of `ergm.multi`'s
@@ -689,21 +806,134 @@ layer-aware terms.
 e.g. `Dict(1 => -log(n))` for a size adjustment); the remaining
 coefficients are estimated with the offset contribution absorbed into the
 linear predictor.
+
+# Standard errors
+
+- `se=:hessian` (default) — the inverse negative pseudo-Hessian. **Caution:**
+  with any dyad-dependent term (`LayerMutual`, `LayerTriangle`,
+  `InterlayerDependence`, `MultiplexMutual`, ...) the pseudo-likelihood
+  multiplies the (layer, i, j) conditionals as if independent, so these
+  standard errors are expected to be *anticonservative*. With only
+  dyad-independent terms the pseudo-likelihood is the likelihood and they are
+  correct.
+- `se=:bootstrap` — parametric bootstrap: simulate `n_boot` multilayer networks
+  from the fitted model at θ̂ (offsets included) with
+  [`simulate_multi_ergm`](@ref), refit `ergm_multi` on each with the same
+  offsets, and report the empirical covariance of the refits. The point
+  estimates are unchanged; only the covariance is replaced. Offset rows stay
+  `NaN` — a fixed coefficient carries no uncertainty. This is the same option,
+  with the same keywords and the same semantics, as `ERGM.mple`'s, and it runs
+  on the ONE shared `Networks.bootstrap_cov` loop.
+
+# Keyword Arguments
+- `se::Symbol=:hessian`: `:hessian` or `:bootstrap` (above)
+- `n_boot::Int=100`: number of bootstrap replicates (`se=:bootstrap` only)
+- `boot_burnin::Int=1000`, `boot_interval::Int=100`: MCMC controls for the
+  bootstrap simulations (the [`simulate_multi_ergm`](@ref) defaults)
+- `rng::AbstractRNG=Random.default_rng()`: source of the bootstrap randomness —
+  a fixed `rng` reproduces the standard errors exactly
 """
 function ergm_multi(m::MultilayerNetwork, terms::Vector{<:AbstractERGMTerm};
                     offsets::Dict{Int, Float64}=Dict{Int, Float64}(),
-                    maxiter::Int=100, tol::Float64=1e-8)
+                    maxiter::Int=100, tol::Float64=1e-8,
+                    se::Symbol=:hessian,
+                    n_boot::Int=100,
+                    boot_burnin::Int=1000,
+                    boot_interval::Int=100,
+                    rng::Random.AbstractRNG=Random.default_rng())
+    se in (:hessian, :bootstrap) ||
+        throw(ArgumentError("se must be :hessian or :bootstrap, got :$se"))
     n_layers(m) >= 1 || throw(ArgumentError("network has no layers"))
+    # Multilayer MPLE enumerates every within-layer dyad as observed, so a
+    # masked (unobserved) dyad in any layer would enter the pseudo-likelihood
+    # at its face value. Reject rather than invent data.
+    for (l, layer) in enumerate(m.layers)
+        require_observed(layer; context="ergm_multi (layer $l)", face_ok=false)
+    end
     p = length(terms)
     all(1 .<= collect(keys(offsets)) .<= p) ||
         throw(ArgumentError("offset indices must reference terms"))
     free = [k for k in 1:p if !haskey(offsets, k)]
     isempty(free) && throw(ArgumentError("all coefficients are offsets; nothing to estimate"))
 
+    model = MultiERGMModel(collect(AbstractERGMTerm, terms), m, offsets)
+    fit = _multi_mple_fit(m, model.terms, offsets, free; maxiter=maxiter, tol=tol)
+    β = fit.θ
+    ll = fit.loglik
+    converged = fit.converged
+    vcov_free = fit.vcov
+    se_free = fit.se
+    pf = length(free)
+
+    coefficients = zeros(p)
+    for (kf, k) in enumerate(free)
+        coefficients[k] = β[kf]
+    end
+    for (k, c) in offsets
+        coefficients[k] = c
+    end
+
+    # `se=:bootstrap` replaces the covariance of the FREE coefficients only:
+    # the offsets are fixed, so they carry no uncertainty under either option.
+    if se === :bootstrap
+        vcov_free, se_free = _multi_bootstrap_cov(model, coefficients, β, free;
+                                                  n_boot=n_boot,
+                                                  boot_burnin=boot_burnin,
+                                                  boot_interval=boot_interval,
+                                                  maxiter=maxiter, tol=tol,
+                                                  rng=rng)
+    end
+
+    std_errors = fill(NaN, p)
+    vcov_full = fill(NaN, p, p)
+    vcov_full[free, free] = vcov_free
+    for (kf, k) in enumerate(free)
+        std_errors[k] = se_free[kf]
+    end
+
+    n_dyads = _n_within_dyads(m)
+    aic = -2 * ll + 2 * pf
+    bic = -2 * ll + pf * log(n_dyads)
+
+    return MultiERGMResult(model, coefficients, std_errors, vcov_full, ll,
+                           aic, bic, converged, se)
+end
+
+# Parametric-bootstrap covariance of the multilayer MPLE: simulate `n_boot`
+# multilayer networks at the fitted coefficients (offsets included — they are
+# part of the data-generating model), refit `ergm_multi` on each with the SAME
+# offsets, and take the empirical covariance of the free coefficients. The loop
+# is the shared `Networks.bootstrap_cov`; this supplies only the two callbacks
+# that are ERGMMulti's.
+function _multi_bootstrap_cov(model::MultiERGMModel, coefficients::Vector{Float64},
+                              β_free::Vector{Float64}, free::Vector{Int};
+                              n_boot::Int, boot_burnin::Int, boot_interval::Int,
+                              maxiter::Int, tol::Float64,
+                              rng::Random.AbstractRNG)
+    terms = model.terms
+    offsets = model.offsets
+
+    simulate(rng, B) = simulate_multi_ergm(model.network, terms, coefficients;
+                                           n_sim=B, burnin=boot_burnin,
+                                           interval=boot_interval, rng=rng)
+
+    refit(sim::MultilayerNetwork) =
+        _multi_mple_fit(sim, terms, offsets, free; maxiter=maxiter, tol=tol).θ
+
+    boot = bootstrap_cov(refit, simulate, β_free; n_boot=n_boot, rng=rng)
+    return boot.vcov, boot.se
+end
+
+# The MPLE design over the within-layer dyads: the FREE columns of the change
+# statistics, the observed tie indicators, and the offset contribution to the
+# linear predictor (`ergm.multi`'s offset mechanism — the fixed coefficients are
+# dropped from the parameter vector but NOT from the linear predictor).
+function _multi_mple_design(m::MultilayerNetwork, terms::Vector{AbstractERGMTerm},
+                            offsets::Dict{Int, Float64}, free::Vector{Int})
+    p = length(terms)
     dyads = _layer_dyads(m)
     n_dyads = length(dyads)
 
-    # Design matrix over within-layer dyads and offset contribution
     X = Matrix{Float64}(undef, n_dyads, p)
     y = Vector{Bool}(undef, n_dyads)
     for (r, (l, i, j)) in enumerate(dyads)
@@ -714,53 +944,26 @@ function ergm_multi(m::MultilayerNetwork, terms::Vector{<:AbstractERGMTerm};
     end
     η0 = [sum(X[r, k] * offsets[k] for k in keys(offsets); init=0.0)
           for r in 1:n_dyads]
-    Xf = X[:, free]
-    pf = length(free)
+    return X[:, free], y, η0
+end
 
-    function derivatives(β)
-        ll = 0.0
-        grad = zeros(pf)
-        hess = zeros(pf, pf)
-        for r in 1:n_dyads
-            η = η0[r] + dot(β, @view Xf[r, :])
-            pr = 1.0 / (1.0 + exp(-η))
-            ll += y[r] ? (η < 0 ? η - log1p(exp(η)) : -log1p(exp(-η))) :
-                         (η < 0 ? -log1p(exp(η)) : -η - log1p(exp(-η)))
-            resid = (y[r] ? 1.0 : 0.0) - pr
-            x = @view Xf[r, :]
-            grad .+= resid .* x
-            hess .-= (pr * (1 - pr)) .* (x * x')
-        end
-        return ll, grad, hess
-    end
-
-    # Maximize the pseudo-likelihood with the shared ERGM.newton_fit
-    # optimizer (Newton–Raphson with step halving)
-    fit = newton_fit(derivatives, zeros(pf); maxiter=maxiter, tol=tol)
-    β = fit.θ
-    ll = fit.loglik
-    converged = fit.converged
-    vcov_free = fit.vcov
-    se_free = fit.se
-
-    coefficients = zeros(p)
-    std_errors = fill(NaN, p)
-    vcov_full = fill(NaN, p, p)
-    vcov_full[free, free] = vcov_free
-    for (kf, k) in enumerate(free)
-        coefficients[k] = β[kf]
-        std_errors[k] = se_free[kf]
-    end
-    for (k, c) in offsets
-        coefficients[k] = c
-    end
-
-    aic = -2 * ll + 2 * pf
-    bic = -2 * ll + pf * log(n_dyads)
-
-    model = MultiERGMModel(collect(AbstractERGMTerm, terms), m, offsets)
-    return MultiERGMResult(model, coefficients, std_errors, vcov_full, ll,
-                           aic, bic, converged)
+# Core multilayer MPLE over the within-layer dyads: build the design, then
+# maximize the pseudo-log-likelihood of the FREE coefficients with the shared
+# `ERGM.newton_fit`. Shared by `ergm_multi` and by the parametric bootstrap's
+# refits (which need only `.θ`).
+#
+# The derivatives come from the shared `ERGM.logistic_derivatives` (review
+# finding 15): the pseudo-likelihood over the within-layer dyads IS a logistic
+# likelihood with an offset, and its derivatives are gemv/gemm over the whole
+# design — not a per-dyad `x * x'` outer product allocating a pf×pf matrix on
+# every one of the n_dyads rows of every Newton evaluation. Never paste the loop
+# back in; TERGM and ERGMRank run on the same one.
+function _multi_mple_fit(m::MultilayerNetwork, terms::Vector{AbstractERGMTerm},
+                         offsets::Dict{Int, Float64}, free::Vector{Int};
+                         maxiter::Int=100, tol::Float64=1e-8)
+    Xf, y, η0 = _multi_mple_design(m, terms, offsets, free)
+    derivatives = logistic_derivatives(Xf, y; offset=η0)
+    return newton_fit(derivatives, zeros(length(free)); maxiter=maxiter, tol=tol)
 end
 
 const fit_multi_ergm = ergm_multi
@@ -870,8 +1073,8 @@ simulated distributions on two panels:
 - `"model statistics"` — the fitted terms' statistics (one level per term);
 - `"layer edges"` — the edge count of each layer (one level per layer).
 
-Extends Network.jl's shared `gof` generic and returns the shared
-`Network.GOFResult` container; per-level p-values are two-sided Monte-Carlo
+Extends Networks.jl's shared `gof` generic and returns the shared
+`Networks.GOFResult` container; per-level p-values are two-sided Monte-Carlo
 p-values computed with the `(1 + k)/(N + 1)` estimator (never exactly zero).
 """
 function gof(result::MultiERGMResult; n_sim::Int=100, burnin::Int=1000,
