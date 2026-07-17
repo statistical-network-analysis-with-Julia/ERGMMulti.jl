@@ -33,6 +33,22 @@ Depth = 2
 1. Krivitsky, P.N., Koehly, L.M. & Marcum, C.S. (2020). Exponential-family
    random graph models for multi-layer networks. *Psychometrika*, 85(3), 630-659.
 
+
+## Citation
+
+If you use ERGMMulti.jl in your work, please cite it using the entry in
+[`CITATION.bib`](https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl/blob/main/CITATION.bib):
+
+```biblatex
+@misc{SNWJERGMMultiJL,
+  author = {{Statistical Network Analysis with Julia}},
+  title = {ERGMMulti.jl: Exponential Random Graph Models for Multilayer Networks in Julia},
+  year = {2026},
+  url = {https://github.com/statistical-network-analysis-with-Julia/ERGMMulti.jl},
+  note = {Homepage: https://statistical-network-analysis-with-Julia.github.io/ERGMMulti.jl; GitHub: https://github.com/statistical-network-analysis-with-Julia}
+}
+```
+
 ## Module
 
 ```@docs
