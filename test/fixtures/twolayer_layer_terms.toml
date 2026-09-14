@@ -1,0 +1,124 @@
+name = "twolayer_layer_terms"
+
+[provenance]
+r_version = "4.6.1"
+ergm_multi_version = "0.3.0"
+ergm_version = "4.12.0"
+network_version = "1.20.0"
+seed = 20260713
+script = "test/fixtures/r/twolayer_layer_terms.R"
+date = "2026-09-12"
+dataset = "the SAME two directed 20-actor layers as twolayer_ergm_multi.toml (identical generating code and seed), wrapped as ergm.multi Layer(list(A = net1, B = net2)); frozen below as edge lists"
+statistics = "summary(lnw ~ L(~edges,~A) + L(~edges,~B) + L(~mutual,~A) + L(~triangle,~A) + L(~edges,~A&B) + mutualL(Ls=list(~A,~B)) + L(~gwesp(0.5,fixed=TRUE),~A) + L(~ostar(2),~B) + L(~nodematch(\"grp\"),~B) + L(~twopath,~A))"
+model_mple = "ergm(lnw ~ L(~edges,~A) + L(~edges,~B) + L(~edges,~A&B) + L(~mutual,~A), estimate = \"MPLE\") -- DYAD-DEPENDENT (the cross-layer and mutual terms read other dyads), so the MPLE is not the MLE on either side; it is the same deterministic function of the change statistics"
+exact_estimator = "the same pseudo-likelihood refit with glm at epsilon = 1e-14 on ergmMPLE(output = \"matrix\")'s own compressed design (response / predictor / weights), since ergm stops its MPLE glm at the default 1e-8"
+model_boundary = "ergm(lnb ~ L(~edges,~A) + L(~edges,~B) + L(~edges,~A&B), estimate = \"MPLE\") on the 6-actor cycle/reversed-cycle design where L(A&B)~edges is 0 (its smallest attainable value): ergm.multi warns \"The MPLE does not exist!\" and returns a FINITE coefficient for the boundary term (it does not apply ergm's drop=TRUE to layer terms); ERGMMulti.jl fixes it at -Inf and agrees on the finite coefficients"
+und_dataset = "two UNDIRECTED 12-actor layers drawn from the same seed stream immediately after the directed ones (Bernoulli on the unordered pairs i < j at logistic(edges + nodematch * same-grp)), wrapped as Layer(list(A = netA, B = netB)); frozen below as edge lists with i < j"
+und_statistics = "summary(lnu ~ L(~edges,~A) + L(~edges,~B) + L(~edges,~A&B) + L(~triangle,~A) + L(~gwesp(0.5,fixed=TRUE),~A) + L(~nodematch(\"grp\"),~B) + L(~kstar(2),~B) + L(~gwdegree(0.3,fixed=TRUE),~B))"
+und_model_mple = "ergm(lnu ~ L(~edges,~A) + L(~edges,~B) + L(~edges,~A&B) + L(~triangle,~A), estimate = \"MPLE\") -- DYAD-DEPENDENT, on the unordered within-layer dyads; as shipped and refit exactly (glm epsilon 1e-14) on ergmMPLE(output = \"matrix\")'s design, whose weights sum to 2 * 12 * 11 / 2 = 132"
+
+[tolerance]
+# (i) The statistics are exact counts (and the gwesp decay's decimals):
+# both sides compute them in closed form. Any disagreement is a wrong
+# statistic, not rounding. DO NOT LOOSEN IT.
+statistics = 1e-10
+#
+# (ii) The MPLE is a deterministic function of the change-statistic design:
+# no Monte Carlo on either side, so two correct implementations differ only
+# in where their optimizers stop. `exact_mple_*` is R's own design refit at
+# epsilon = 1e-14, and THAT is the assertion with teeth: 1e-6, ~1e-5 of the
+# smallest standard error. If it fails, a change statistic of the
+# cross-layer or mutual term (or the dyad universe) is wrong. DO NOT LOOSEN IT.
+exact_mple_coefficients = 1e-6
+exact_mple_std_errors = 1e-6
+#
+# Against ergm.multi AS SHIPPED the tolerance must also absorb ergm's own glm
+# slack, which `mple_vs_exact_*` in [values] measures; the tolerance is 20x the
+# measurement rounded up to a power of ten (floor 1e-6), not hand-chosen.
+mple_coefficients = 1e-06
+mple_std_errors = 0.0001
+#
+# (iii) The boundary design's FINITE coefficients are logit(6/18) in closed
+# form on both sides (R's glm at epsilon = 1e-8 lands on them to ~1e-9);
+# the boundary term itself is where the two packages DIVERGE by design and
+# is asserted as -Inf here against R's finite value, not compared.
+boundary_finite_coefficients = 1e-6
+#
+# (iv) The undirected layers: the same three kinds of tolerance as (i)/(ii),
+# the as-shipped ones again 20x the measured glm slack.
+und_statistics = 1e-10
+und_exact_mple_coefficients = 1e-6
+und_exact_mple_std_errors = 1e-6
+und_mple_coefficients = 1e-06
+und_mple_std_errors = 0.001
+
+[values]
+# --- the two layers, frozen (identical to twolayer_ergm_multi.toml) ------
+n_actors = 20
+n_layers = 2
+directed = true
+grp = ["a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b"]
+edge_counts = [100, 55]
+layer_src = [[6, 7, 20, 9, 10, 16, 18, 19, 2, 4, 11, 13, 14, 16, 19, 6, 10, 16, 20, 3, 7, 12, 13, 16, 4, 5, 7, 8, 9, 14, 16, 17, 18, 19, 20, 10, 13, 7, 13, 14, 16, 20, 1, 2, 4, 5, 7, 11, 19, 2, 8, 9, 17, 18, 3, 13, 8, 9, 15, 18, 20, 1, 11, 12, 3, 5, 8, 10, 11, 3, 5, 7, 11, 13, 17, 10, 17, 3, 5, 11, 13, 14, 1, 2, 3, 10, 11, 12, 20, 2, 8, 12, 14, 15, 17, 18, 8, 9, 10, 18], [7, 10, 16, 1, 8, 9, 11, 13, 20, 7, 9, 12, 13, 20, 8, 10, 11, 19, 8, 9, 13, 16, 1, 9, 13, 14, 18, 5, 15, 8, 20, 3, 6, 17, 20, 1, 3, 9, 14, 19, 1, 6, 6, 8, 9, 12, 19, 2, 8, 12, 13, 15, 17, 17, 19]]
+layer_dst = [[1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 12, 13, 13, 13, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 16, 16, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 20, 20, 20, 20], [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 7, 8, 9, 10, 10, 11, 11, 11, 11, 12, 13, 13, 13, 13, 14, 14, 15, 15, 15, 15, 15, 16, 18, 18, 18, 19, 19, 20, 20]]
+
+# --- (i) the statistics: R's names, the Julia terms, the values ----------
+stat_names = ["L(A)~edges", "L(B)~edges", "L(A)~mutual", "L(A)~triangle", "L(A&B)~edges", "L(A,B)~mutual", "L(A)~gwesp.OTP.fixed.0.5", "L(B)~ostar2", "L(B)~nodematch.grp", "L(A)~twopath"]
+stat_julia_terms = ["LayerEdges(1)", "LayerEdges(2)", "LayerMutual(1)", "LayerTriangle(1)", "InterlayerDependence(1, 2)", "MultiplexMutual(1, 2)", "WithinLayer(GWESP(0.5), 1)", "WithinLayer(OStar(2), 2)", "WithinLayer(NodeMatch(:grp), 2)", "WithinLayer(TwoPath(), 1)"]
+statistics = [100, 55, 13, 152, 13, 12, 84.746782504624122, 74, 31, 444]
+
+# --- (ii) the dyad-dependent MPLE ---------------------------------------
+mple_term_names = ["L(A)~edges", "L(B)~edges", "L(A&B)~edges", "L(A)~mutual"]
+mple_julia_terms = ["LayerEdges(1)", "LayerEdges(2)", "InterlayerDependence(1, 2)", "LayerMutual(1)"]
+mple_coefficients = [-0.99901765309951884, -1.7344264518376624, -0.16708359089022484, -0.027616842354615447]
+mple_std_errors = [0.13990742071963283, 0.15697644802991595, 0.24137777925258269, 0.26540846940471569]
+# ...and the same pseudo-likelihood taken to convergence on R's own
+# compressed design. This is what ERGMMulti.jl is actually held to.
+exact_mple_coefficients = [-0.99901765309941482, -1.7344264519481598, -0.16708359089098607, -0.027616842354639223]
+exact_mple_std_errors = [0.13990744941667344, 0.15697735782601413, 0.24137854154352212, 0.26540847049366034]
+# The within-layer dyad universe ergmMPLE's weights sum to: 2 * 20 * 19.
+mple_dyad_universe = 760
+mple_design_rows = 12
+# How far ergm.multi AS SHIPPED sits from that exact optimum (its glm stops
+# at the default epsilon = 1e-8).
+mple_vs_exact_coef = 1.1049738901647288e-10
+mple_vs_exact_se = 9.0979609818075957e-07
+
+# --- (iii) the boundary design: ergm.multi warns but does not drop --------
+boundary_n_actors = 6
+boundary_layer_a_src = [1, 2, 3, 4, 5, 6]
+boundary_layer_a_dst = [2, 3, 4, 5, 6, 1]
+# layer B is the reversed cycle (dst -> src), so no ordered dyad is tied in both
+boundary_stat_names = ["L(A)~edges", "L(B)~edges", "L(A&B)~edges"]
+boundary_julia_terms = ["LayerEdges(1)", "LayerEdges(2)", "InterlayerDependence(1, 2)"]
+boundary_statistics = [6, 6, 0]
+boundary_mple_exists_warning = true
+# R's coefficients AS SHIPPED: the first two are logit(6/18); the third is
+# finite (ergm.multi does not drop) with a standard error in the thousands.
+# ERGMMulti.jl returns -Inf with standard error 0 for the third.
+boundary_r_coefficients = [-1.09861228866811, -1.09861228866811, -17.584259698567884]
+boundary_r_std_errors = [0.47140451750479589, 0.47140451750479589, 1996.1641503096025]
+boundary_finite_coefficients = [-1.09861228866811, -1.09861228866811]
+
+# --- (iv) the undirected layers ---------------------------------------------
+und_n_actors = 12
+und_n_layers = 2
+und_directed = false
+und_grp = ["a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b"]
+und_edge_counts = [26, 18]
+und_layer_src = [[1, 1, 3, 1, 2, 4, 3, 5, 2, 3, 4, 1, 3, 1, 5, 6, 8, 1, 2, 4, 2, 4, 6, 8, 9, 10], [1, 1, 2, 2, 3, 1, 2, 4, 5, 6, 7, 1, 3, 8, 2, 3, 1, 5]]
+und_layer_dst = [[2, 3, 4, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 10, 11, 11, 11, 12, 12, 12, 12, 12, 12], [3, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 11, 11, 12, 12]]
+und_stat_names = ["L(A)~edges", "L(B)~edges", "L(A&B)~edges", "L(A)~triangle", "L(A)~gwesp.fixed.0.5", "L(B)~nodematch.grp", "L(B)~kstar2", "L(B)~gwdeg.fixed.0.3"]
+und_stat_julia_terms = ["LayerEdges(1)", "LayerEdges(2)", "InterlayerDependence(1, 2)", "LayerTriangle(1)", "WithinLayer(GWESP(0.5), 1)", "WithinLayer(NodeMatch(:grp), 2)", "WithinLayer(Kstar(2), 2)", "WithinLayer(GWDegree(0.3), 2)"]
+und_statistics = [26, 18, 7, 10, 24.670452285216555, 8, 49, 15.141881075394711]
+und_mple_term_names = ["L(A)~edges", "L(B)~edges", "L(A&B)~edges", "L(A)~triangle"]
+und_mple_julia_terms = ["LayerEdges(1)", "LayerEdges(2)", "InterlayerDependence(1, 2)", "LayerTriangle(1)"]
+und_mple_coefficients = [0.37533930617440153, -0.95660825472339817, -0.062014754229128673, -0.5687670615107977]
+und_mple_std_errors = [0.48245930823851152, 0.31778414901774676, 0.40499853017303888, 0.29412030503373648]
+und_exact_mple_coefficients = [0.37533931022583983, -0.95660826241995334, -0.062014757551858625, -0.56876706515332831]
+und_exact_mple_std_errors = [0.48246658826453498, 0.3177957365640483, 0.40501098094072008, 0.29413096178113429]
+# The UNORDERED within-layer dyad universe ergmMPLE's weights sum to: 2 * 12 * 11 / 2.
+und_mple_dyad_universe = 132
+und_mple_design_rows = 18
+und_mple_vs_exact_coef = 7.696555170966235e-09
+und_mple_vs_exact_se = 1.2450767681193575e-05
