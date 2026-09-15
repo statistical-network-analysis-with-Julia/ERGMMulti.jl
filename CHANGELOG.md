@@ -538,6 +538,8 @@ within-layer-dyad MPLE, and sampling no longer drops network attributes.
 
 ### Changed
 
+- Documentation uses the default Documenter themes, with a new package-specific
+  SVG icon and browser favicon in the official Julia logo colors.
 - **The sampler runs on `ERGM.mh_toggle!`** (item 28), the family's one
   Metropolis kernel, with `(layer, i, j)` moves: `propose` draws the layer,
   then an ordered pair of distinct actors (swapped to `i < j` on undirected
