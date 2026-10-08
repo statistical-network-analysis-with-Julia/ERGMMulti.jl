@@ -1,0 +1,81 @@
+name = "pooled_layer_terms"
+
+[provenance]
+r_version = "4.6.1"
+ergm_multi_version = "0.3.0"
+ergm_version = "4.12.0"
+network_version = "1.20.0"
+seed = 20260713
+script = "test/fixtures/r/pooled_layer_terms.R"
+date = "2026-10-07"
+dataset = "the SAME directed 20-actor and undirected 12-actor layer pairs as twolayer_layer_terms.toml (identical generating code and seed), plus the deterministic vertex attributes g3 = rep(a,b,c) and x = round(sin(1:n), 3) on both layers; frozen below as edge lists"
+statistics = "summary() of L(~term, c(~A, ~B)) for nineteen ergm terms on the directed layers (und_: fifteen on the undirected layers); the pooled statistic is the sum of the per-layer statistics (asserted in the script)"
+model_mple = "ergm(lnw ~ L(~edges, c(~A,~B)) + L(~mutual, c(~A,~B)) + L(~gwesp(0.5,fixed=TRUE), c(~A,~B)) + L(~nodematch(\"grp\"), c(~A,~B)) + L(~edges, ~A&B), estimate = \"MPLE\")"
+und_model_mple = "ergm(lnu ~ L(~edges, c(~A,~B)) + L(~gwesp(0.5,fixed=TRUE), c(~A,~B)) + L(~nodefactor(\"g3\"), c(~A,~B)) + L(~gwdegree(0.3,fixed=TRUE), ~B) + L(~edges, ~A&B), estimate = \"MPLE\")"
+exact_estimator = "the same pseudo-likelihood refit with glm at epsilon = 1e-14 on ergmMPLE(output = \"matrix\")'s own compressed design, since ergm stops its MPLE glm at the default 1e-8"
+r_warnings = "none (stopifnot in the script)"
+
+[tolerance]
+# The statistics are exact counts (and geometrically weighted decimals):
+# both sides compute them in closed form. DO NOT LOOSEN.
+statistics = 1e-10
+und_statistics = 1e-10
+# The MPLE is a deterministic function of the change-statistic design; the
+# exact refit (glm epsilon 1e-14 on R's own design) is the assertion with
+# teeth. DO NOT LOOSEN.
+exact_mple_coefficients = 1e-6
+exact_mple_std_errors = 1e-6
+und_exact_mple_coefficients = 1e-6
+und_exact_mple_std_errors = 1e-6
+# As shipped: 20x the measured glm slack (mple_vs_exact_* below), rounded
+# up to a power of ten (no floor).
+mple_coefficients = 1e-07
+mple_std_errors = 0.0001
+und_mple_coefficients = 1e-08
+und_mple_std_errors = 0.0001
+
+[values]
+n_actors = 20
+grp = ["a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b"]
+g3 = ["a", "b", "c", "a", "b", "c", "a", "b", "c", "a", "b", "c", "a", "b", "c", "a", "b", "c", "a", "b"]
+x = [0.84099999999999997, 0.90900000000000003, 0.14099999999999999, -0.75700000000000001, -0.95899999999999996, -0.27900000000000003, 0.65700000000000003, 0.98899999999999999, 0.41199999999999998, -0.54400000000000004, -1, -0.53700000000000003, 0.41999999999999998, 0.99099999999999999, 0.65000000000000002, -0.28799999999999998, -0.96099999999999997, -0.751, 0.14999999999999999, 0.91300000000000003]
+layer_src = [[6, 7, 20, 9, 10, 16, 18, 19, 2, 4, 11, 13, 14, 16, 19, 6, 10, 16, 20, 3, 7, 12, 13, 16, 4, 5, 7, 8, 9, 14, 16, 17, 18, 19, 20, 10, 13, 7, 13, 14, 16, 20, 1, 2, 4, 5, 7, 11, 19, 2, 8, 9, 17, 18, 3, 13, 8, 9, 15, 18, 20, 1, 11, 12, 3, 5, 8, 10, 11, 3, 5, 7, 11, 13, 17, 10, 17, 3, 5, 11, 13, 14, 1, 2, 3, 10, 11, 12, 20, 2, 8, 12, 14, 15, 17, 18, 8, 9, 10, 18], [7, 10, 16, 1, 8, 9, 11, 13, 20, 7, 9, 12, 13, 20, 8, 10, 11, 19, 8, 9, 13, 16, 1, 9, 13, 14, 18, 5, 15, 8, 20, 3, 6, 17, 20, 1, 3, 9, 14, 19, 1, 6, 6, 8, 9, 12, 19, 2, 8, 12, 13, 15, 17, 17, 19]]
+layer_dst = [[1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 12, 13, 13, 13, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 16, 16, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 19, 19, 19, 19, 19, 19, 19, 20, 20, 20, 20], [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 7, 8, 9, 10, 10, 11, 11, 11, 11, 12, 13, 13, 13, 13, 14, 14, 15, 15, 15, 15, 15, 16, 18, 18, 18, 19, 19, 20, 20]]
+
+# --- (i) directed statistics --------------------------------------------
+stat_names = ["L((A,B))~edges", "L((A,B))~mutual", "L((A,B))~triangle", "L((A,B))~gwesp.OTP.fixed.0.5", "L((A,B))~gwdsp.OTP.fixed.0.5", "L((A,B))~ostar2", "L((A,B))~istar2", "L((A,B))~twopath", "L((A,B))~nodematch.grp", "L((A,B))~nodefactor.g3.b", "L((A,B))~nodefactor.g3.c", "L((A,B))~mix.grp.b.a", "L((A,B))~mix.grp.a.b", "L((A,B))~mix.grp.b.b", "L((A,B))~nodecov.x", "L((A,B))~absdiff.x", "L((A,B))~idegree0", "L((A,B))~idegree1", "L((A,B))~idegree2", "L((A,B))~odegree1", "L((A,B))~odegree2", "L((A,B))~gwideg.fixed.0.3", "L((A,B))~gwodeg.fixed.0.3", "L((A,B))~meandeg", "L((A,B))~density"]
+stat_julia_terms = ["Edges()", "Mutual()", "Triangle()", "GWESP(0.5)", "GWDSP(0.5)", "OStar(2)", "IStar(2)", "TwoPath()", "NodeMatch(:grp)", "NodeFactor(:g3)", "NodeMix(:grp)", "NodeCov(:x)", "AbsDiff(:x)", "IDegree(0:2)", "ODegree(1:2)", "GWIDegree(0.3)", "GWODegree(0.3)", "MeanDeg()", "Density()"]
+statistics = [155, 17, 174, 101.1402518449115, 445.41347490663645, 297, 320, 570, 92, 106, 104, 30, 33, 44, 29.480000000000004, 126.05799999999999, 1, 4, 9, 3, 9, 50.287470990435644, 50.617794371971172, 7.7499999999999805, 0.40789473684210603]
+
+# --- (ii) directed MPLE --------------------------------------------------
+mple_term_names = ["L((A,B))~edges", "L((A,B))~mutual", "L((A,B))~gwesp.OTP.fixed.0.5", "L((A,B))~nodematch.grp", "L(A&B)~edges"]
+mple_julia_terms = ["WithinLayer(Edges(), [1, 2])", "WithinLayer(Mutual(), [1, 2])", "WithinLayer(GWESP(0.5), [1, 2])", "WithinLayer(NodeMatch(:grp), [1, 2])", "InterlayerDependence(1, 2)"]
+mple_coefficients = [-1.7293435751505757, -0.0082720339456321991, 0.071404580664683123, 0.63840564982629278, -0.39033681130649539]
+mple_std_errors = [0.18844577908562332, 0.22345109890020734, 0.07777879750996361, 0.18632541497545085, 0.2410025356576628]
+exact_mple_coefficients = [-1.7293435765120517, -0.0082720340535014508, 0.071404580594065695, 0.63840565135613003, -0.39033681147147498]
+exact_mple_std_errors = [0.18844867003221458, 0.22345315442642175, 0.077779535190497393, 0.18632778976861183, 0.24100479826989474]
+mple_dyad_universe = 760
+mple_vs_exact_coef = 1.5298372568750551e-09
+mple_vs_exact_se = 2.8909465912552168e-06
+
+# --- (iii) undirected statistics ----------------------------------------
+und_n_actors = 12
+und_grp = ["a", "b", "a", "b", "a", "b", "a", "b", "a", "b", "a", "b"]
+und_g3 = ["a", "b", "c", "a", "b", "c", "a", "b", "c", "a", "b", "c"]
+und_x = [0.84099999999999997, 0.90900000000000003, 0.14099999999999999, -0.75700000000000001, -0.95899999999999996, -0.27900000000000003, 0.65700000000000003, 0.98899999999999999, 0.41199999999999998, -0.54400000000000004, -1, -0.53700000000000003]
+und_layer_src = [[1, 1, 3, 1, 2, 4, 3, 5, 2, 3, 4, 1, 3, 1, 5, 6, 8, 1, 2, 4, 2, 4, 6, 8, 9, 10], [1, 1, 2, 2, 3, 1, 2, 4, 5, 6, 7, 1, 3, 8, 2, 3, 1, 5]]
+und_layer_dst = [[2, 3, 4, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 10, 11, 11, 11, 12, 12, 12, 12, 12, 12], [3, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 11, 11, 12, 12]]
+und_stat_names = ["L((A,B))~edges", "L((A,B))~triangle", "L((A,B))~kstar2", "L((A,B))~gwesp.fixed.0.5", "L((A,B))~gwdsp.fixed.0.5", "L((A,B))~gwnsp.fixed.0.5", "L((A,B))~gwdeg.fixed.0.3", "L((A,B))~degree0", "L((A,B))~degree1", "L((A,B))~degree2", "L((A,B))~concurrent", "L((A,B))~nodematch.grp", "L((A,B))~nodefactor.g3.b", "L((A,B))~nodefactor.g3.c", "L((A,B))~mix.g3.a.b", "L((A,B))~mix.g3.b.b", "L((A,B))~mix.g3.a.c", "L((A,B))~mix.g3.b.c", "L((A,B))~mix.g3.c.c", "L((A,B))~nodecov.x", "L((A,B))~absdiff.x", "L((A,B))~deg2to4"]
+und_stat_julia_terms = ["Edges()", "Triangle()", "Kstar(2)", "GWESP(0.5)", "GWDSP(0.5)", "GWNSP(0.5)", "GWDegree(0.3)", "Degree(0:2)", "Concurrent()", "NodeMatch(:grp)", "NodeFactor(:g3)", "NodeMix(:g3)", "NodeCov(:x)", "AbsDiff(:x)", "DegRange(2, 4)"]
+und_statistics = [44, 14, 145, 35.457390965791284, 113.34753855845743, 77.890147592666139, 31.1642009278074, 0, 2, 4, 22, 26, 27, 31, 10, 4, 14, 9, 4, 9.2260000000000009, 37.553999999999988, 10]
+
+# --- (iv) undirected MPLE -----------------------------------------------
+und_mple_term_names = ["L((A,B))~edges", "L((A,B))~gwesp.fixed.0.5", "L((A,B))~nodefactor.g3.b", "L((A,B))~nodefactor.g3.c", "L(B)~gwdeg.fixed.0.3", "L(A&B)~edges"]
+und_mple_julia_terms = ["WithinLayer(Edges(), [1, 2])", "WithinLayer(GWESP(0.5), [1, 2])", "WithinLayer(NodeFactor(:g3), [1, 2])", "WithinLayer(GWDegree(0.3), 2)", "InterlayerDependence(1, 2)"]
+und_mple_coefficients = [-0.69153048376365422, 0.029879882974861917, -0.16032064224320863, 0.046234822385710916, 0.48887141400707074, -0.11123220362742453]
+und_mple_std_errors = [0.59303760493718827, 0.13511065052171936, 0.34244007126583653, 0.33489394515594589, 1.2233810964125482, 0.39741713114941801]
+und_exact_mple_coefficients = [-0.69153048383625038, 0.029879882977924703, -0.16032064225299911, 0.046234822425844743, 0.48887141404378198, -0.11123220361061606]
+und_exact_mple_std_errors = [0.59303900072612503, 0.13511090808714002, 0.34244096970335008, 0.33489449653734754, 1.2233819922132845, 0.39741782705479883]
+und_mple_dyad_universe = 132
+und_mple_vs_exact_coef = 7.2596151312609436e-11
+und_mple_vs_exact_se = 1.3957889367643972e-06

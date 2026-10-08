@@ -1,0 +1,41 @@
+name = "multilayer_labels"
+
+[provenance]
+r_version = "4.6.1"
+ergm_multi_version = "0.3.0"
+ergm_version = "4.12.0"
+network_version = "1.20.0"
+seed = 20261006
+script = "test/fixtures/r/multilayer_labels.R"
+date = "2026-10-06"
+dataset = "deterministic: three directed 8-actor layers friend/advice/cowork and two undirected 8-actor layers a/b, ties arithmetic in the vertex indices; vertex attributes g = rep(a,b,c) and x = (1:8)/2; frozen below as edge lists"
+statistics = "summary(Layer(list(friend, advice, cowork)) ~ ...) with layer terms on one layer, pooled over a subset, over every layer and over one layer, both co-occurrence orders, mutualL, and nodefactor/gwesp/nodecov/idegree inside L(); und_: the undirected pair"
+model_offset = "ergm(l3 ~ L(~edges,~friend) + L(~edges,~advice) + offset(L(~nodematch(\"g\"),~advice)) + offset(L(~edges,~friend&advice)), offset.coef = c(0.5, 0.2), estimate = \"MPLE\") -- only its coefficient NAMES are frozen"
+
+[tolerance]
+# Names are compared exactly. The statistics are exact counts (and a
+# geometrically weighted decimal): both sides compute them in closed form.
+# DO NOT LOOSEN.
+statistics = 1e-10
+und_statistics = 1e-10
+
+[values]
+n_actors = 8
+g = ["a", "b", "c", "a", "b", "c", "a", "b"]
+x = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]
+layer_names = ["friend", "advice", "cowork"]
+edges_friend = [[1, 4], [1, 7], [2, 5], [2, 8], [3, 6], [4, 1], [4, 7], [5, 2], [5, 8], [6, 3], [7, 1], [7, 4], [8, 2], [8, 5]]
+edges_advice = [[1, 4], [1, 6], [1, 7], [2, 3], [2, 5], [2, 8], [3, 2], [3, 6], [3, 7], [4, 1], [4, 7], [5, 2], [5, 8], [6, 1], [6, 3], [7, 1], [7, 3], [7, 4], [7, 8], [8, 2], [8, 5], [8, 7]]
+edges_cowork = [[1, 2], [1, 4], [1, 6], [1, 8], [2, 1], [2, 3], [2, 5], [2, 7], [3, 2], [3, 4], [3, 6], [3, 8], [4, 1], [4, 3], [4, 5], [4, 7], [5, 2], [5, 4], [5, 6], [5, 8], [6, 1], [6, 3], [6, 5], [6, 7], [7, 2], [7, 4], [7, 6], [7, 8], [8, 1], [8, 3], [8, 5], [8, 7]]
+stat_julia_terms = ["LayerEdges(1)", "LayerEdges(:)", "LayerEdges([1, 3])", "LayerEdges([2])", "LayerMutual(1)", "LayerMutual([1, 2])", "LayerTriangle(3)", "LayerTriangle(:)", "InterlayerDependence(1, 2)", "InterlayerDependence(2, 3)", "InterlayerDependence(3, 1)", "MultiplexMutual(1, 2)", "MultiplexMutual(3, 2)", "WithinLayer(NodeFactor(:g), 1)", "WithinLayer(GWESP(0.5), 3)", "WithinLayer(NodeCov(:x), [1, 3])", "WithinLayer(IDegree(1:2), 2)"]
+stat_names = ["L(friend)~edges", "L((friend,advice,cowork))~edges", "L((friend,cowork))~edges", "L((advice))~edges", "L(friend)~mutual", "L((friend,advice))~mutual", "L(cowork)~triangle", "L((friend,advice,cowork))~triangle", "L(friend&advice)~edges", "L(advice&cowork)~edges", "L(cowork&friend)~edges", "L(friend,advice)~mutual", "L(cowork,advice)~mutual", "L(friend)~nodefactor.g.b", "L(friend)~nodefactor.g.c", "L(cowork)~gwesp.OTP.fixed.0.5", "L((friend,cowork))~nodecov.x", "L(advice)~idegree1", "L(advice)~idegree2"]
+statistics = [14, 68, 46, 22, 7, 18, 0, 32, 14, 16, 10, 14, 16, 12, 4, 0, 207, 0, 3]
+und_layer_names = ["a", "b"]
+und_edges_a = [[2, 1], [4, 2], [5, 1], [5, 4], [6, 3], [7, 2], [7, 5], [8, 1], [8, 4], [8, 7]]
+und_edges_b = [[2, 1], [3, 2], [4, 2], [5, 1], [5, 2], [5, 3], [5, 4], [6, 2], [6, 5], [7, 2], [7, 5], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7]]
+und_stat_julia_terms = ["InterlayerDependence(1, 2)", "InterlayerDependence(2, 1)", "LayerEdges(:)", "LayerTriangle(1)", "WithinLayer(Kstar(2), 2)", "WithinLayer(GWESP(0.5), :)"]
+und_stat_names = ["L(a&b)~edges", "L(b&a)~edges", "L((a,b))~edges", "L(a)~triangle", "L(b)~kstar2", "L((a,b))~gwesp.fixed.0.5"]
+und_statistics = [9, 9, 28, 0, 78, 25.829849783236519]
+offset_julia_terms = ["LayerEdges(1)", "LayerEdges(2)", "WithinLayer(NodeMatch(:g), 2)", "InterlayerDependence(1, 2)"]
+offset_values = [0.5, 0.2]
+offset_coef_names = ["L(friend)~edges", "L(advice)~edges", "offset(L(advice)~nodematch.g)", "offset(L(friend&advice)~edges)"]

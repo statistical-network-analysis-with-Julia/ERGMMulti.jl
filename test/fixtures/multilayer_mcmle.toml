@@ -1,0 +1,82 @@
+name = "multilayer_mcmle"
+
+[provenance]
+r_version = "4.6.1"
+ergm_multi_version = "0.3.0"
+ergm_version = "4.12.0"
+network_version = "1.20.0"
+seed = 20261002
+script = "test/fixtures/r/multilayer_mcmle.R"
+date = "2026-10-07"
+model = "Layer(list(A = a, B = b)) ~ L(~edges,~A) + L(~edges,~B) + L(~mutual,~A) + L(~edges,~A&B) + L(~gwesp(0.25,fixed=TRUE),~B) on two seeded 16-actor directed layers (reciprocity in A, overlap between A and B), frozen as edge lists"
+estimator = "ergm.multi MCMLE at control.ergm defaults, nine seeds (1..9); hp_* = one fit at MCMC.samplesize=16384, MCMC.interval=4096 (seed 4242); mple_* = estimate=\"MPLE\""
+
+[tolerance]
+# Observed statistics are deterministic functions of the layers.
+summary_statistics = 1e-10
+#
+# Both estimators are Monte-Carlo MLEs of the same likelihood, so they are
+# compared at R's own resolution. For coefficient k a Julia fit must lie
+# within  band_sd * sqrt(sd_k^2 + sd_k^2 / n_seeds)  of R's nine-seed mean,
+# where sd_k is R's seed-to-seed standard deviation (`coefficients_sd`):
+# the first term is one fit's own Monte-Carlo error (taken equal to R's),
+# the second the error of R's mean. The band is floored at
+# `floor_se_fraction` of R's mean standard error, so that a coefficient
+# whose nine R fits happened to agree unusually closely does not demand more
+# than either sampler's O(1/ESS) bias allows. Standard errors likewise,
+# against `std_errors_sd`, with the same floor.
+band_sd = 4.0
+floor_se_fraction = 0.1
+# The log-likelihood (bridge / path sampling on both sides): within
+# band_sd * sqrt(2) * R's seed-to-seed sd, floored at 1.0 log unit.
+loglik_floor = 1.0
+# The MPLE is a deterministic function of the change-statistic design:
+# the exact refit (glm epsilon 1e-14 on ergmMPLE's design) at 1e-6, the
+# as-shipped MPLE at 20x the measured glm slack (mple_vs_exact_coefficients),
+# rounded up to a power of ten (no floor). DO NOT LOOSEN.
+exact_mple_coefficients = 1e-6
+mple_coefficients = 1e-08
+
+[values]
+n_actors = 16
+n_layers = 2
+directed = true
+layer1_src = [2, 15, 1, 5, 11, 13, 5, 13, 14, 3, 7, 9, 10, 3, 9, 9, 10, 13, 4, 10, 3, 10, 14, 16, 5, 6, 12, 13, 16, 1, 7, 8, 13, 3, 13, 7, 9, 12, 14, 3, 5, 8, 11, 13, 16, 1, 9, 14, 9]
+layer1_dst = [1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 6, 6, 6, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 9, 10, 10, 10, 10, 12, 12, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 15, 15, 15, 16]
+layer2_src = [2, 6, 8, 15, 11, 13, 3, 5, 7, 9, 13, 16, 3, 5, 9, 9, 10, 12, 5, 12, 16, 1, 8, 12, 16, 9, 7, 9, 15, 3, 5, 7, 8, 1, 9, 7, 9]
+layer2_dst = [1, 1, 1, 1, 2, 2, 4, 4, 4, 4, 4, 4, 5, 6, 6, 7, 8, 8, 9, 9, 9, 10, 10, 10, 10, 11, 13, 13, 13, 14, 14, 14, 14, 15, 15, 16, 16]
+julia_terms = ["LayerEdges(1)", "LayerEdges(2)", "LayerMutual(1)", "InterlayerDependence(1, 2)", "WithinLayer(GWESP(0.25), 2)"]
+term_names = ["L(A)~edges", "L(B)~edges", "L(A)~mutual", "L(A&B)~edges", "L(B)~gwesp.OTP.fixed.0.25"]
+summary_statistics = [49, 37, 14, 23, 12.712526744355609]
+seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+coefficients_seed1 = [-2.627677882882018, -2.6586723676921427, 2.3639967919507736, 2.4076246211912715, 0.15408913913726971]
+std_errors_seed1 = [0.2867661651664774, 0.36884909202484323, 0.52847542271847858, 0.40047745396253576, 0.29298743143856892]
+coefficients_seed2 = [-2.6466640529793501, -2.6745753175854152, 2.3698410343943523, 2.425060153748575, 0.15478774510815643]
+std_errors_seed2 = [0.27017218064263465, 0.3615736626987151, 0.49895100803780323, 0.40269242992730664, 0.28947853977933896]
+coefficients_seed3 = [-2.643679612788556, -2.6639252046780673, 2.3538808923589074, 2.3936049562861781, 0.15128025699383049]
+std_errors_seed3 = [0.27813491629759424, 0.38360191509340641, 0.51542401921811198, 0.41539160269486031, 0.29585582993573373]
+coefficients_seed4 = [-2.6472207222896618, -2.6556677878776598, 2.4028748272028193, 2.3870915999926243, 0.15552250632358322]
+std_errors_seed4 = [0.27534258292362729, 0.37736504731164644, 0.5302236535464665, 0.40548123155701532, 0.30096361677100475]
+coefficients_seed5 = [-2.6462416324932998, -2.6753210621045502, 2.3660816832143294, 2.3887560120763562, 0.1576202448133435]
+std_errors_seed5 = [0.28544582635859428, 0.37415850387330807, 0.53520242316314526, 0.39307754605488704, 0.2940858657407312]
+coefficients_seed6 = [-2.6495332952416524, -2.680089486238864, 2.3641688573781758, 2.4054540646146134, 0.16703135370998265]
+std_errors_seed6 = [0.27795986420775831, 0.38248507724300096, 0.54019563915667135, 0.39318445622015596, 0.29677687597014812]
+coefficients_seed7 = [-2.6730793078974977, -2.7283669779406265, 2.4028086189889879, 2.4762948780209233, 0.17566279349071529]
+std_errors_seed7 = [0.30983944439426742, 0.38851271355958333, 0.57823077852634019, 0.4059171873803189, 0.2882193747898773]
+coefficients_seed8 = [-2.6480943177889293, -2.6807480049723398, 2.3630015390364614, 2.4361087186088977, 0.15761624247652203]
+std_errors_seed8 = [0.28783155290053025, 0.37940127215182684, 0.53010482425937966, 0.406010715387917, 0.30456260809583668]
+coefficients_seed9 = [-2.6432317707319939, -2.6654991197288114, 2.3550038043976191, 2.4135032970597785, 0.15103154377391012]
+std_errors_seed9 = [0.27517431370658446, 0.3663016832248055, 0.5214731654618403, 0.39835553088652359, 0.29222971274952608]
+coefficients_mean = [-2.647269177232551, -2.6758739254242752, 2.3712953387691584, 2.4148331446221354, 0.15829353620303482]
+coefficients_sd = [0.011653318959370362, 0.021661112363895188, 0.018578104713751781, 0.028232806721902082, 0.0080507868667063342]
+std_errors_mean = [0.28296298295534095, 0.37580544079790401, 0.53092010378758192, 0.4022875726746134, 0.29501776169675176]
+std_errors_sd = [0.011711937142570303, 0.0088473711948890404, 0.021509289600089857, 0.0070315686878339462, 0.0052430794707687828]
+logliks = [-194.45111734390528, -194.65487214193826, -194.25252368205037, -194.28293265897577, -193.9722247618725, -194.36266490973316, -193.72074568374831, -194.86778070846228, -194.61104901867515]
+loglik_mean = -194.352878989929
+loglik_sd = 0.35216753486864022
+hp_coefficients = [-2.647453179747203, -2.6778232326780049, 2.3767778416151466, 2.4119612912991357, 0.16518336659686261]
+hp_std_errors = [0.27750596779930109, 0.37454000274297877, 0.51986260208570578, 0.39612200893383076, 0.28637956476974402]
+hp_loglik = -194.38610347218557
+mple_coefficients = [-2.689298490805053, -2.843898090001836, 2.4426135554304804, 2.4822825899715824, 0.336338508124438]
+exact_mple_coefficients = [-2.6892984908817108, -2.8438980900784467, 2.4426135555065902, 2.4822825900364256, 0.33633850814883187]
+mple_vs_exact_coefficients = 7.6657791225898109e-11
